@@ -7,9 +7,9 @@ OwlBot is an experimental Android “phone brain” for a small GrowBot-style ro
 
 This repository is an independent community extension and is **not the official GrowBot project**.
 
-![Isometric CAD rendering of the smaller XRobots YouCanBuildDog 9 g servo body](docs/images/youcanbuilddog-9g-isometric.svg)
+![The current OwlBot prototype assembled on the smaller XRobots dog body](docs/images/owlbot-prototype.jpg)
 
-<p align="center"><em>Smaller 9 g servo body rendered from James Bruton/XRobots' MIT-licensed <code>CAD/dog02_9g.stp</code>. This is a CAD view, not a photograph of the completed OwlBot electronics.</em></p>
+<p align="center"><em>The current OwlBot prototype: phone mount, experimental electronics, power hardware, and eight-servo body. Project-maintainer photograph.</em></p>
 
 ## Project origins and attribution
 
@@ -33,11 +33,13 @@ The MIT license permits use, modification, distribution, sublicensing, and sale 
 This repository does not claim authorship of GrowBot or the YouCanBuildDog body. It contains the OwlBot Android phone-brain and integration work, and communicates with compatible robot controllers and the GrowBot relay/protocol where configured.
 
 <details>
-<summary>Additional body view</summary>
+<summary>Body CAD reference views</summary>
+
+![Isometric CAD rendering of the smaller XRobots YouCanBuildDog 9 g servo body](docs/images/youcanbuilddog-9g-isometric.svg)
 
 ![Top CAD rendering of the smaller XRobots YouCanBuildDog 9 g servo body](docs/images/youcanbuilddog-9g-top.svg)
 
-Both documentation images were generated from the upstream STEP model. Their exact provenance and reproduction instructions are in [`docs/images/README.md`](docs/images/README.md).
+Both CAD images were generated from the upstream STEP model. Photo and CAD provenance are documented in [`docs/images/README.md`](docs/images/README.md).
 
 </details>
 

@@ -21,6 +21,8 @@ The six-servo body used by the OwlBot prototype is the smaller **9 g servo versi
 
 YouCanBuildDog is released under the MIT License. Copyright © 2026 James Bruton. The MIT copyright and permission notice must be preserved in copies or substantial portions. The OwlBot prototype uses the smaller 9 g mechanical body while replacing the original electronics and control software.
 
+The OwlBot prototype photograph in `docs/images/owlbot-prototype.jpg` is copyright © 2026 Aaronminer1 and licensed under CC BY-NC 4.0. Its metadata-stripped repository copy documents the current experimental assembly.
+
 Third-party Android dependencies and external services retain their own licenses and terms. Separately licensed model weights and the unofficial Microsoft Edge Read Aloud transport are not included in the community edition.
 
 OwlBot is distributed for noncommercial purposes under PolyForm Noncommercial 1.0.0. See `LICENSE`. Commercial and production-use permission is not granted merely because the mechanical body has an MIT license.
