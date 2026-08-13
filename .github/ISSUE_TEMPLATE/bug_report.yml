@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible OwlBot problem without posting private data or credentials.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove API keys, pairing codes, Wi-Fi details, precise locations, device IDs, conversations, and face/camera data before submitting. Use private vulnerability reporting for security issues.
+  - type: input
+    id: version
+    attributes:
+      label: OwlBot version or commit
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone and Android version
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps with all sensitive values redacted
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, precise locations, device IDs, conversations, and face/camera data.
+          required: true
+        - label: I tested physical motion with the robot supervised and away from hazards.
+          required: false

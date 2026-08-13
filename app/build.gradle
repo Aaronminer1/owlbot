@@ -1,0 +1,40 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'dev.owlbot.brain'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "dev.owlbot.brain"
+        // 26 keeps this to adaptive icons only, and every phone people use as
+        // a GrowBot face is well past it.
+        minSdk 26
+        targetSdk 34
+        versionCode 34
+        versionName "4.1"
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled true
+            // Intentionally unsigned here. Production artifacts must be
+            // signed with an owner-controlled release key, never the shared
+            // Android debug certificate.
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Bundled on-device face detector: available immediately and never uploads frames.
+    implementation 'com.google.mlkit:face-detection:16.1.7'
+}

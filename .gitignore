@@ -1,0 +1,57 @@
+# Android and Gradle build output
+.gradle/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Machine-specific Android SDK configuration
+local.properties
+
+# IDE state
+.idea/
+*.iml
+.vscode/
+
+# Signing material and packaged applications
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.apk
+*.aab
+
+# Credentials and environment files
+.env
+.env.*
+!.env.example
+secrets.py
+secrets.*.py
+!secrets.example.py
+*credentials*
+*private*
+
+# Downloaded local models and temporary downloads
+*.litertlm
+*.tflite
+*.onnx
+*.part
+models/
+
+# Logs, device dumps, local state, and caches
+*.log
+*.jsonl
+*.db
+*.sqlite*
+*.bak
+*.tmp
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+
+# Laptop bridge runtime-only calibration and control material
+tools/laptop-maestro-bridge/*.local.json
+tools/laptop-maestro-bridge/*.token

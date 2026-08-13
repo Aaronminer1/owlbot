@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A little two-legged creature: rounded body, one eye, two legs mid-stride.
+     Drawn on the 108dp adaptive canvas; the safe zone is the middle 66dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- body -->
+    <path
+        android:fillColor="#54E6C0"
+        android:pathData="M38,30 L70,30 A8,8 0 0 1 78,38 L78,64 A8,8 0 0 1 70,72 L38,72 A8,8 0 0 1 30,64 L30,38 A8,8 0 0 1 38,30 Z" />
+
+    <!-- eye -->
+    <path
+        android:fillColor="#05070D"
+        android:pathData="M54,44 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
+    <path
+        android:fillColor="#54E6C0"
+        android:pathData="M57,41 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+
+    <!-- mouth -->
+    <path
+        android:strokeColor="#05070D"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M46,60 Q54,66 62,60" />
+
+    <!-- legs, mid-stride -->
+    <path
+        android:strokeColor="#54E6C0"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M42,72 L34,88" />
+    <path
+        android:strokeColor="#54E6C0"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M66,72 L76,86" />
+
+    <!-- antenna -->
+    <path
+        android:strokeColor="#54E6C0"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,30 L54,22" />
+    <path
+        android:fillColor="#FFB454"
+        android:pathData="M54,19 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
+</vector>

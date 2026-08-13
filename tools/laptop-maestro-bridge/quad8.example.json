@@ -1,0 +1,15 @@
+{
+  "frame_ms": 40,
+  "joints": {
+    "front_left_hip":   {"channel": 0, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": false},
+    "front_left_knee":  {"channel": 1, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": false},
+    "front_right_hip":  {"channel": 2, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": true},
+    "front_right_knee": {"channel": 3, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": true},
+    "rear_left_hip":    {"channel": 4, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": false},
+    "rear_left_knee":   {"channel": 5, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": false},
+    "rear_right_hip":   {"channel": 6, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": true},
+    "rear_right_knee":  {"channel": 7, "center_us": 1500, "min_us": 1000, "max_us": 2000, "travel_us": 250, "invert": true},
+    "head_pan":         {"channel": 8, "center_us": 1500, "min_us": 1200, "max_us": 1800, "travel_us": 250, "invert": false, "enabled": false},
+    "head_tilt":        {"channel": 9, "center_us": 1500, "min_us": 1200, "max_us": 1800, "travel_us": 200, "invert": false, "enabled": false}
+  }
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Platform theme, no appcompat. -->
+    <style name="Theme.OwlBot" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/gb_bg</item>
+        <item name="android:statusBarColor">@color/gb_bg</item>
+        <item name="android:navigationBarColor">@color/gb_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
