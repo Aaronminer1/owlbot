@@ -1381,7 +1381,9 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                     stopListening();
                     stopHandsFreeCapture();
                 } else if (handsFreeEnabled) {
-                    handsFreeResumeAt = System.currentTimeMillis() + 650;
+                    // The rolling pre-buffer already protects the first syllable. Keep only
+                    // a short echo guard so quick replies such as "yes" are not missed.
+                    handsFreeResumeAt = System.currentTimeMillis() + 300;
                     startHandsFreeCapture();
                 }
             });
@@ -1979,6 +1981,13 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         String finalText = text == null ? "" : text.trim();
         if (finalText.isEmpty()) finalText = handsFreePartial.trim();
         handsFreePartial = "";
+        // A recognizer that reported an error is not trusted for the next turn. Successful
+        // sessions stay warm, avoiding the disconnect caused by rebuilding it per utterance.
+        if (error != 0 && handsFreeSpeechRecognizer != null) {
+            SpeechRecognizer failed = handsFreeSpeechRecognizer;
+            handsFreeSpeechRecognizer = null;
+            try { failed.destroy(); } catch (Exception ignored) {}
+        }
         if (!finalText.isEmpty()) {
             Log.i(TAG, "hands-free transcript delivered: chars=" + finalText.length());
             toJs("onNativeSpeech", finalText);
@@ -1995,6 +2004,40 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
 
     private void transcribeWithSystemRecognizer(final byte[] pcm, final int rate,
                                                   final String fallbackKey) {
+        transcribeWithSystemRecognizer(pcm, rate, fallbackKey, 0);
+    }
+
+    /** Retry transient recognizer failures with the same buffered utterance. The user should
+     *  never have to repeat a phrase merely because Android's recognizer service restarted. */
+    private void retrySystemRecognizer(final long generation, final byte[] pcm, final int rate,
+                                       final String fallbackKey, final int attempt, final int error) {
+        if (generation != handsFreeTranscriptionGeneration || !handsFreeTranscribing) return;
+        Log.w(TAG, "hands-free recognizer transient error=" + error
+                + "; replaying captured utterance attempt=" + (attempt + 1));
+        handsFreeTranscribing = false;
+        handsFreeTranscriptionGeneration++;
+        if (handsFreeTranscriptionTimeout != null) {
+            main.removeCallbacks(handsFreeTranscriptionTimeout);
+            handsFreeTranscriptionTimeout = null;
+        }
+        handsFreePartial = "";
+        closeHandsFreeAudioRead();
+        SpeechRecognizer failed = handsFreeSpeechRecognizer;
+        handsFreeSpeechRecognizer = null;
+        if (failed != null) try { failed.destroy(); } catch (Exception ignored) {}
+        main.postDelayed(() -> transcribeWithSystemRecognizer(
+                pcm, rate, fallbackKey, attempt + 1), 300L);
+    }
+
+    private static boolean isTransientRecognizerError(int error) {
+        return error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED
+                || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+                || error == SpeechRecognizer.ERROR_SERVER
+                || error == SpeechRecognizer.ERROR_CLIENT;
+    }
+
+    private void transcribeWithSystemRecognizer(final byte[] pcm, final int rate,
+                                                  final String fallbackKey, final int attempt) {
         main.post(() -> {
             if (!handsFreeEnabled || micPaused || handsFreeTranscribing) return;
             if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -2009,12 +2052,13 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 final long generation = ++handsFreeTranscriptionGeneration;
                 handsFreePartial = "";
                 toJs("onNativeHandsFreeState", "transcribing");
-                if (handsFreeSpeechRecognizer != null) handsFreeSpeechRecognizer.destroy();
                 boolean onDevice = Build.VERSION.SDK_INT >= 31
                         && SpeechRecognizer.isOnDeviceRecognitionAvailable(this);
-                handsFreeSpeechRecognizer = onDevice
-                        ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-                        : SpeechRecognizer.createSpeechRecognizer(this);
+                if (handsFreeSpeechRecognizer == null) {
+                    handsFreeSpeechRecognizer = onDevice
+                            ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                            : SpeechRecognizer.createSpeechRecognizer(this);
+                }
                 handsFreeSpeechRecognizer.setRecognitionListener(new RecognitionListener() {
                     @Override public void onResults(Bundle b) {
                         ArrayList<String> hits=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -2023,6 +2067,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                     }
                     @Override public void onError(int error) {
                         Log.w(TAG,"hands-free system recognizer error=" + error);
+                        if (attempt < 1 && isTransientRecognizerError(error)) {
+                            retrySystemRecognizer(generation,pcm,rate,fallbackKey,attempt,error);
+                            return;
+                        }
                         finishSystemHandsFreeTranscription(generation,"",error,fallbackKey,pcm,rate);
                     }
                     @Override public void onReadyForSpeech(Bundle b) {}
@@ -2062,7 +2110,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 intent.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION,
                         RecognizerIntent.EXTRA_AUDIO_SOURCE);
                 Log.i(TAG,"hands-free recognizer start: bytes=" + pcm.length
-                        + ", onDevice=" + onDevice);
+                        + ", onDevice=" + onDevice + ", attempt=" + attempt);
                 handsFreeSpeechRecognizer.startListening(intent);
                 handsFreeTranscriptionTimeout = () -> {
                     if (generation != handsFreeTranscriptionGeneration || !handsFreeTranscribing) return;
@@ -2182,7 +2230,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             startLocationUpdates();
         }
         if (handsFreeEnabled && !micPaused) {
-            handsFreeResumeAt = System.currentTimeMillis() + 650;
+            handsFreeResumeAt = System.currentTimeMillis() + 300;
             startHandsFreeCapture();
         }
     }
