@@ -12,8 +12,8 @@ android {
         // a GrowBot face is well past it.
         minSdk 26
         targetSdk 34
-        versionCode 34
-        versionName "4.1"
+        versionCode 48
+        versionName "5.5-community"
     }
 
     buildTypes {

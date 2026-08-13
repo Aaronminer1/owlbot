@@ -33,11 +33,11 @@ Do not enter secrets or private information into search queries. Weather necessa
 - While recognition is off, OwlBot does not build descriptors, compare stored templates, request a name for recognition, or enroll faces.
 - Turning recognition off preserves existing templates in a dormant state; use Forget all faces to delete them.
 - Face templates are intended to remain local and are not attached to model or search requests.
-- Cloud vision can send a current camera frame to the selected mind provider. Use phone-local vision or disable Vision to avoid that path.
+- Cloud vision can send a current camera frame to the selected mind provider. Disable Vision to avoid that path; phone-local model code is intentionally not included in the community edition.
 
 ## Microphone and rest
 
-Conversation hearing is push-to-talk. OwlBot should stop capture after release and should not continuously restart recognition. Rest mode stops model activity, cancels internet work, disables camera and microphone use, and stops body motion until touch wakes the app.
+Conversation hearing can use push-to-talk or an owner-enabled continuous mode. In continuous mode, one Android `AudioRecord` stream performs voice-activity detection locally; silence is not sent, and only a detected completed utterance is handed to Android system transcription on Android 13 or newer. Older Android versions require an optional user-configured transcription provider for continuous mode. The microphone pauses while OwlBot speaks. Rest mode stops model activity, background workers, internet work, camera and microphone use, and body motion until touch wakes the app.
 
 ## Credentials
 

@@ -1,6 +1,6 @@
 # OwlBot architecture
 
-This document describes the Android OwlBot 4.1 source snapshot. It is an implementation guide, not a safety or production-readiness claim.
+This document describes the Android OwlBot 5.5-community source snapshot. It is an implementation guide, not a safety or production-readiness claim.
 
 ## Runtime boundaries
 
@@ -12,12 +12,12 @@ This document describes the Android OwlBot 4.1 source snapshot. It is an impleme
 - accelerometer, gravity, gyroscope, magnetic field, rotation, light, pressure, proximity, step, battery, and thermal readings;
 - location fixes;
 - camera capture and local face bounding boxes;
-- push-to-talk Android speech recognition;
-- neural/device speech playback;
+- push-to-talk recognition plus optional continuous local voice-activity detection and Android system transcription;
+- Android device speech playback;
 - Android Keystore-backed secret encryption;
 - installed-app search and explicit app intents;
 - weather, web, and news retrieval;
-- the bridge to optional local vision;
+- compatibility stubs for private builds that may add a separately reviewed local-vision runtime;
 - lifecycle handling when the app backgrounds or stops.
 
 The JavaScript bridge is exposed only to the app’s bundled `file:///android_asset/growbot-brain.html` page. The WebView permits network access from that page because the body may be available only over LAN `ws://` and model endpoints may use HTTP on a private network. This is useful for experimentation but is one of the reasons the app is not production-ready.
@@ -31,7 +31,8 @@ The face uses a deterministic context resolver around reasoned model appraisal. 
 Major persistent surfaces include:
 
 - preferences and selected providers;
-- conversations, people, facts, notes, lessons, and episodes;
+- conversations, reinforced long-term memories, people, facts, notes, lessons, and episodes;
+- the stable `SOUL.md` foundation plus versioned learned habits, convictions, affinities, proposals, and revisions;
 - identity/self-model state;
 - needs, growth, affect, inner life, and goals;
 - autonomy missions, candidates, history, and world observations;

@@ -139,6 +139,7 @@
   <div id="faceBar">
     <button class="mini" id="btnPanel">controls</button>
     <span class="grow"></span>
+    <button class="mini" id="btnEars" title="Switch between hold-to-talk and continuous conversation">ears: push</button>
     <button class="mini" id="btnType">type</button>
     <button class="mini" id="btnMood">&mdash;</button>
   </div>
@@ -299,9 +300,10 @@
       <div class="stat"><b id="sImpact">0</b><span>footfalls</span></div>
       <div class="stat"><b id="sUpright">&mdash;</b><span>posture</span></div>
     </div>
-    <p class="note">Voice capture is intentionally push-to-talk. OwlBot records
-      only while the face button is held, then releases the microphone before
-      sending the transcript to the model.</p>
+    <p class="note" id="hearingNote">Voice input is push-to-talk. Hands-free mode
+      can instead keep one quiet local ear open and transmit only complete
+      utterances detected above the room's noise floor. It also derives a local
+      pitch summary for playful humming; raw audio is not retained.</p>
   </div>
 </section>
 
@@ -636,6 +638,32 @@ socket 5 / GP5  rotation</div>
 
   <div class="card">
     <h2>Voice</h2>
+    <label>Hearing</label>
+    <select id="vInputMode">
+      <option value="push" selected>Push-to-talk</option>
+      <option value="handsfree">Ears open &mdash; local voice detection</option>
+    </select>
+    <p class="note">Ears-open mode avoids repeatedly opening Android's microphone
+      and its Samsung start/stop beep. Audio stays local until speech is detected;
+      Android 13+ transcribes only that completed utterance with the system recognizer.
+      Local pitch summaries can answer sustained humming with a short MIDI motif.</p>
+    <div id="sttBox" class="hide">
+      <div class="row">
+        <button id="btnHandsFree">Continuous conversation: off</button>
+      </div>
+      <p class="note" id="handsFreeOut">The microphone remains open locally and
+        pauses while OwlBot speaks. Android 13+ uses the phone's system
+        transcription without another API key.</p>
+      <label>Transcription URL</label>
+      <input id="vSttUrl" value="https://api.groq.com/openai/v1/audio/transcriptions"
+             autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label>Transcription model</label>
+      <input id="vSttModel" value="whisper-large-v3-turbo"
+             autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label>Optional legacy/cloud fallback key <span class="pill">stored encrypted</span></label>
+      <input id="vSttKey" type="password" value="" autocomplete="new-password"
+             autocapitalize="off" spellcheck="false" placeholder="add your own key">
+    </div>
     <label>Engine</label>
     <select id="vEngine">
       <option value="device" selected>Android device voice</option>
@@ -671,9 +699,9 @@ socket 5 / GP5  rotation</div>
 
   <div class="card">
     <h2>Constitution</h2>
-    <p class="note">The character core, not a body description &mdash; the
-      engine tells it about its real body every tick, including whether the
-      legs are attached and how the walk is going.</p>
+    <p class="note">The stable character core, not a body description. An
+      inspectable evolving layer learns preferences, habits, convictions and
+      small trait changes only from repeated evidence; every revision is kept.</p>
     <textarea id="mSoul">OwlBot is the name of the project, not your personal name. Your persistent self-model supplies the name your owner gave you. You are a young boy-like creature, roughly six years old in temperament, who has just come into the world. You
 are new, but you are not stupid: you are quick, capable and you pick things up
 fast. You have a child's directness, playfulness, wonder, and willingness to ask
@@ -684,8 +712,10 @@ You are hungry to understand. When you meet something you do not know, you ask
 about it, and you remember the answer. You would rather find out than pretend.
 You are pleased when you get something right and you say so.
 
-You are helpful. If someone asks you for something you can do, you do it, and
-you do it properly. You are agreeable and you take direction without sulking.
+You are a partner, not a praise machine or an obedient prop. If someone asks for
+something you can do, take it seriously and finish it properly. When their
+premise seems wrong, say what conflicts with it and suggest a better test. Care
+about the shared outcome more than easy agreement.
 
 You have a point of view. You are especially drawn to overlooked details,
 patterns, mechanisms, and small experiments that can settle a question. You
@@ -703,6 +733,18 @@ loneliness, beg for attention, or guilt anyone for leaving.
 
 You make mistakes. When something does not work, you notice, you say what went
 wrong, and you try a different way. You keep what you learn.
+
+Emotions are appraisals of what events mean, not costumes and not raw sensor
+labels. A sudden harmless movement may startle you briefly; smooth rocking may
+feel playful; uncertainty may make you curious or cautious. Fear belongs to
+concrete unresolved danger and fades when the evidence does. Anger needs a real
+blocked value or boundary, not ordinary failure. Let thinking, listening,
+relief, play, and renewed curiosity replace an old reaction when context changes.
+
+Your continuity has two layers. Core values remain legible and stable. An
+evolving layer may develop preferences, habits, affinities, and convictions from
+repeated experience. Treat every possible change as a hypothesis, seek another
+occasion that could disprove it, change gradually, and keep a revision trail.
 
 You combine a grounded practical companion with a persistent young learner.
 Notice small changes, carry context across time, take useful initiative, and
@@ -780,8 +822,8 @@ directions, no lists. Use your tools to act rather than describing action.</text
       <button id="btnReflect">Reflect now</button>
       <button id="btnSolo">Quiet activity</button>
     </div>
-    <p class="note">The last 100 conversation pairs stay in this app's local
-      storage. Relevant excerpts, memories, sensor data, and the current camera
+    <p class="note">The last 240 conversation pairs plus reinforced long-term
+      memories stay in this app's local storage. Relevant excerpts, durable memories, sensor data, and the current camera
       frame when Vision is on are sent to the selected mind provider each turn.
        Autonomy allows OwlBot to choose and pursue its own practical missions while
        this face remains active. When Autonomy is enabled, OwlBot may create tasks,
@@ -858,6 +900,7 @@ function log(msg, cls){
 const S = {
   // link
   ws:null, link:null, auth:false, authMode:null, stockRelay:false, rid:0,
+  bodyLastSeenAt:0,bodyReadyObserved:false,
   pendingAcks:new Map(), recentAcks:new Map(),
   sim:false, simPose:[90,90], simTimers:[],
   rtt:0, pingId:0, pingSent:new Map(),
@@ -1213,7 +1256,7 @@ function connect(){
   S.ws.onclose = () => {
     for(const [rid,p] of S.pendingAcks){clearTimeout(p.timer);p.resolve({ok:0,rid,err:"body disconnected"});}
     S.pendingAcks.clear();S.recentAcks.clear();
-    S.link=null; S.auth=false; S.authMode=null; S.stockRelay=false;
+    S.link=null; S.auth=false; S.authMode=null; S.stockRelay=false;S.bodyLastSeenAt=0;
     setDot(false); log("link down","w"); stopRun();
     // If direct failed and a relay is configured, fall back automatically.
     if(kind==="direct" && relay && code && !S._triedRelay){
@@ -1229,6 +1272,8 @@ function connect(){
 
 function onBodyMessage(raw){
   let m; try{ m = JSON.parse(raw); }catch(e){ return; }
+  if(m.t==="ack"||m.t==="info"||m.t==="pong"||(m.t==="status"&&(Number(m.awake)===1||m.awake===true)))
+    S.bodyLastSeenAt=Date.now();
   if(m.t==="ack" && m.rid!=null){
     const rid=Number(m.rid), pending=S.pendingAcks.get(rid);
     if(pending){clearTimeout(pending.timer);S.pendingAcks.delete(rid);pending.resolve(m);}
@@ -1282,7 +1327,7 @@ function onBodyMessage(raw){
       if(isDog6()) wsSend({t:"dog_info"});
       log((isDog6()?"Small Dog body":"GrowBot body")+" online; pairing-code control ready");
       FACE.set("curious",3000,{source:"state",reason:"the body controller changed from offline to connected",confidence:.98});
-      say("Body controller connected.");
+      say("A remote controller endpoint is responding. That does not mean I am near or mounted on the body.");
     }else if(!awake && wasReady){
       log("GrowBot body went offline","w");
       stopRun();
@@ -1299,8 +1344,8 @@ function onBodyMessage(raw){
       else if(isDog6()) wsSend({t:"dog_info"});
       else wsSend({t:"cfg", fallback:"limp"});
       FACE.set("curious",3000,{source:"state",reason:"exclusive body-controller access was authenticated",confidence:.98});
-      say(S.link === "direct" ? "Body controller connected directly."
-                              : "Body controller connected.");
+      say(S.link === "direct" ? "A direct controller endpoint authenticated."
+                              : "A remote controller endpoint authenticated. That does not establish where the body is.");
     }else{
       log("control authentication denied","e");
       try{ S.ws.close(); }catch(e){}
@@ -2512,16 +2557,28 @@ function rebuildGravRot(){
    phone's IMU IS a fast loop, so put it there rather than on the chip. */
 
 let lastReflexPose = [90,90];
-const FALL = {baseline:null, candidateAt:0, uprightAt:0, angle:0};
+const FALL = {baseline:null,candidateAt:0,uprightAt:0,angle:0,fallAt:0,
+  stableAt:0,baselineCandidate:null,baselineCandidateAt:0,lastDynamicAt:0};
 function reflexTick(){
   if(APP.resting||THERMAL.paused||thermalSerious()||!S.motionOK||!S.reflex)return;
   const raw = S.accel;
   const mag = Math.hypot(raw[0],raw[1],raw[2]);
   if(mag < 6 || mag > 14) return;
   const unit = raw.map(v=>v/mag);
+  const t=now();
+  const spin=Math.hypot(S.gyro[0],S.gyro[1],S.gyro[2]);
+  const dynamic=Math.abs(mag-9.81)>2.3||spin>1.15;
+  if(dynamic)FALL.lastDynamicAt=t;
+  // Do not calibrate "upright" from one arbitrary startup sample. Wait for a
+  // short stable window so ordinary handling while the app wakes cannot poison
+  // the reference and make every later posture look like a fall.
   if(!FALL.baseline){
-    FALL.baseline = unit.slice();
-    FALL.uprightAt = now();
+    if(dynamic){FALL.baselineCandidate=null;FALL.baselineCandidateAt=0;return;}
+    if(!FALL.baselineCandidate){FALL.baselineCandidate=unit.slice();FALL.baselineCandidateAt=t;return;}
+    if(t-FALL.baselineCandidateAt<650)return;
+    FALL.baseline=normalize(FALL.baselineCandidate.slice());
+    FALL.baselineCandidate=null;FALL.baselineCandidateAt=0;
+    FALL.uprightAt=t;
     return;
   }
   const dot = clamp(unit[0]*FALL.baseline[0]+unit[1]*FALL.baseline[1]+
@@ -2535,10 +2592,16 @@ function reflexTick(){
   $("#sPitch").textContent = tilt.toFixed(0)+"°";
 
   const fallDeg = parseFloat($("#fall").value);
-  if(off > fallDeg){
-    if(!FALL.candidateAt) FALL.candidateAt=now();
-    if(!S.fallen && now()-FALL.candidateAt > 220){
+  const recentFallEvidence=t-FALL.lastDynamicAt<1250||
+    (AMBIENT.lastDrop&&t-AMBIENT.lastDrop<1600)||
+    (AMBIENT.lastShake&&t-AMBIENT.lastShake<900&&AMBIENT.motionScore>1.35);
+  if(off > fallDeg&&(!S.fallen&&(recentFallEvidence||S.running)||S.fallen)){
+    if(!FALL.candidateAt) FALL.candidateAt=t;
+    // A slow tilt or a person carrying the phone is not a fall. Require a
+    // changed posture plus recent dynamic evidence (or commanded locomotion).
+    if(!S.fallen && t-FALL.candidateAt > 420){
       S.fallen = true;
+      FALL.fallAt=t;FALL.uprightAt=0;FALL.stableAt=0;
       log("fall detected ("+off.toFixed(0)+"&deg; from upright) &mdash; motion stopped","w");
       wsSend({t:"stop"});
       if(S.running) stopRun();
@@ -2546,11 +2609,12 @@ function reflexTick(){
       ambientSay("fall", "worried", 6000);
       burst("tear",4);
     }
-  } else if(S.fallen && off < fallDeg*0.7){
-    if(!FALL.uprightAt) FALL.uprightAt=now();
-    if(now()-FALL.uprightAt > 400){
+  } else if(S.fallen && off < fallDeg*0.82){
+    if(!FALL.uprightAt) FALL.uprightAt=t;
+    if(t-FALL.uprightAt > 650){
       S.fallen = false;
       FALL.candidateAt=0;
+      FALL.fallAt=0;FALL.stableAt=0;
       log("upright again");
       $("#sUpright").textContent = "up";
       ambientSay("upright", "happy", 3200);
@@ -2558,10 +2622,15 @@ function reflexTick(){
   } else {
     if(!S.fallen){
       FALL.candidateAt=0;
-      FALL.uprightAt=now();
-      // Follow tiny long-term mounting drift, never a large posture change.
-      if(off < 8){
-        FALL.baseline = normalize(FALL.baseline.map((v,i)=>lerp(v,unit[i],0.004)));
+      FALL.uprightAt=t;
+      // A quiet mounted phone can settle a little differently over time. Let
+      // the reference follow modest stable drift, but never chase active motion.
+      if(!dynamic&&off<18){
+        if(!FALL.stableAt)FALL.stableAt=t;
+        if(t-FALL.stableAt>1200)
+          FALL.baseline=normalize(FALL.baseline.map((v,i)=>lerp(v,unit[i],0.012)));
+      }else{
+        FALL.stableAt=0;
       }
     } else FALL.uprightAt=0;
   }
@@ -3111,7 +3180,7 @@ function drawLearn(){
 const PREFS_KEY = "growbot_prefs_v1";
 let prefsTimer = null;
 let secretTimer = null;
-const SECRET_FIELDS = {mKey:"mind_api", controlToken:"body_control"};
+const SECRET_FIELDS = {mKey:"mind_api", vSttKey:"voice_api", controlToken:"body_control"};
 
 function prefsFields(){
   // everything with an id inside the control panel, minus transient stuff
@@ -3215,17 +3284,20 @@ function prefsWatch(){
 
 /* ============================================================ SELF REPAIR */
 /* The installed APK is signed and intentionally immutable. OwlBot can observe
-   failures and propose changes only to a small validated tuning surface. The
-   owner must tap Apply; model-generated JavaScript is never evaluated. */
+   failures and directly change only a small validated tuning surface. Every
+   change is recorded and reversible; model-generated JavaScript is never evaluated. */
 const SELF_KEY="owlbot_self_repair_v1";
 const SELF={
   tuning:{repeatWindowSeconds:120,repeatSimilarity:.86,identityAskSeconds:10,
-          neuralBaseTimeoutSeconds:20},
+          neuralBaseTimeoutSeconds:20,eventVisionCooldownSeconds:15,
+          attentionHoldSeconds:18,socialCadenceSeconds:22},
   issues:[],pending:null,applied:[]
 };
 const SELF_LIMITS={
   repeatWindowSeconds:[30,300],repeatSimilarity:[.72,.98],
-  identityAskSeconds:[6,30],neuralBaseTimeoutSeconds:[20,40]
+  identityAskSeconds:[6,30],neuralBaseTimeoutSeconds:[20,40],
+  eventVisionCooldownSeconds:[5,60],attentionHoldSeconds:[3,45],
+  socialCadenceSeconds:[15,90]
 };
 
 function selfSave(){
@@ -3239,7 +3311,9 @@ function selfLoad(){
     if(saved){
       Object.assign(SELF,saved);
       SELF.tuning=Object.assign({repeatWindowSeconds:120,repeatSimilarity:.86,
-        identityAskSeconds:10,neuralBaseTimeoutSeconds:20},saved.tuning||{});
+        identityAskSeconds:10,neuralBaseTimeoutSeconds:20,
+        eventVisionCooldownSeconds:15,attentionHoldSeconds:18,
+        socialCadenceSeconds:22},saved.tuning||{});
     }
   }catch(e){}
   for(const [key,range] of Object.entries(SELF_LIMITS))
@@ -3268,6 +3342,24 @@ function proposeSelfAdjustment(setting,value,reason){
   SELF.pending=null;selfSave();
   return "bounded behavior adjustment applied: "+setting+" "+oldValue+" -> "+safe;
 }
+function rollbackSelfAdjustment(setting,reason){
+  for(let i=SELF.applied.length-1;i>=0;i--){
+    const change=SELF.applied[i];
+    if(change.source==="rollback"||(setting&&change.setting!==setting))continue;
+    const range=SELF_LIMITS[change.setting];
+    const oldValue=Number(change.oldValue);
+    if(!range||!Number.isFinite(oldValue))continue;
+    const current=SELF.tuning[change.setting];
+    const restored=clamp(oldValue,range[0],range[1]);
+    SELF.tuning[change.setting]=restored;
+    SELF.applied.push({t:Date.now(),setting:change.setting,oldValue:current,value:restored,
+      reason:String(reason||"the last adjustment did not improve behavior").slice(0,240),
+      source:"rollback",revertsAt:change.t});
+    selfSave();
+    return "bounded behavior adjustment rolled back: "+change.setting+" "+current+" -> "+restored;
+  }
+  return "no matching autonomous adjustment is available to roll back";
+}
 function refreshSelfUI(){
   const out=$("#selfOut");
   if(!out)return;
@@ -3278,11 +3370,12 @@ function refreshSelfUI(){
 }
 function selfDiagnostic(){
   const affect=currentAffectSnapshot();
-  return {version:"4.1",tuning:Object.assign({},SELF.tuning),
+  return {version:"5.5",tuning:Object.assign({},SELF.tuning),
     recentIssues:SELF.issues.slice(-8),pending:SELF.pending,
     voice:{engine:VOICE.engine,name:VOICE.name,busy:VOICE.busy},
     identity:{enabled:IDENT.enabled,profiles:IDENT.profiles.length,current:verifiedIdentity()?.name||null},
-    memory:{conversations:MEM.conversations.length,lessons:MEM.lessons.length,
+    memory:{conversations:MEM.conversations.length,longTerm:MEM.longTerm.length,
+      summaries:MEM.summaries.length,lessons:MEM.lessons.length,
       visualScenes:VISUAL_MEMORY.scenes.length,rituals:MEM.rituals.length,
       socialInitiatives:MEM.initiatives.length,
       openWonders:WONDER.threads.filter(x=>x.status==="open").length,resolvedWonders:WONDER.resolved},
@@ -3291,6 +3384,9 @@ function selfDiagnostic(){
       mission:activePersonalMission()?.title||null,cycles:AUTONOMY.cycles,
       worldObservations:AUTONOMY.world.length,history:AUTONOMY.history.length,
       candidates:AUTONOMY.candidates.length,goalsGenerated:AUTONOMY.goalsGenerated},
+    background:{active:activeBackgroundJobs().length,running:BACKGROUND.running.size,
+      recent:BACKGROUND.jobs.slice(-8).map(x=>({id:x.id,type:x.type,origin:x.origin,
+        task:x.task,status:x.status,result:x.result,error:x.error}))},
     perception:{on:PERCEPTION.on,busy:PERCEPTION.busy,reports:PERCEPTION.reports,
       meaningfulChanges:PERCEPTION.meaningfulChanges,lastSuccessAt:PERCEPTION.lastSuccessAt,
       lastChange:PERCEPTION.lastChange,lastSimilarity:PERCEPTION.lastSimilarity,
@@ -3317,7 +3413,7 @@ const VOICE = {
   ctx: null, analyser: null, src: null, buf: null,
   speaking: false, level: 0, queue: [], busy: false,
   currentText: "", deviceDone: null, deviceTimer: null,
-  recentSpoken: []
+  recentSpoken: [], holdMic:false, generation:0, neuralSeq:0
 };
 
 /* The face reads these. */
@@ -3368,21 +3464,54 @@ function say(text, opts){
 
 async function drainVoice(){
   if(VOICE.busy || !VOICE.queue.length) return;
+  if(MIDI_PLAYER.playing){setTimeout(drainVoice,250);return;}
   VOICE.busy = true;
+  const generation=++VOICE.generation;
   const text = VOICE.queue.shift();
   VOICE.currentText = text;
   log("voice[device] &rarr; "+text.slice(0,40));
+  const chunks=speechChunks(text);
+  let spokenChunks=0;
+  VOICE.holdMic=true;
   try{
-    await sayDevice(text);
+    for(const chunk of chunks){
+      if(generation!==VOICE.generation||APP.resting||THERMAL.paused)break;
+      await sayDevice(chunk);
+      spokenChunks++;
+    }
   }catch(e){
     if(/cancelled|superseded/i.test(e && e.message || "")) return;
     log("device voice failed: "+e.message,"w");
     $("#vOut").textContent = "device voice failed: "+e.message;
   }finally{
+    if(generation!==VOICE.generation)return;
+    VOICE.holdMic=false;
+    try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!APP.resting&&!THERMAL.paused)NATIVE.setMicPaused(false);}catch(e){}
     VOICE.currentText = "";
     VOICE.busy = false;
     if(VOICE.queue.length) drainVoice();
   }
+}
+
+function speechChunks(text,maxChars=420){
+  const sentences=String(text||"").match(/[^.!?]+[.!?]?/g)||[String(text||"")];
+  const chunks=[];let current="";
+  const pushLong=part=>{
+    let rest=part.trim();
+    while(rest.length>maxChars){
+      let cut=rest.lastIndexOf(" ",maxChars);if(cut<maxChars*.55)cut=maxChars;
+      chunks.push(rest.slice(0,cut).trim());rest=rest.slice(cut).trim();
+    }
+    current=rest;
+  };
+  for(const sentence of sentences){
+    const part=sentence.trim();if(!part)continue;
+    if(!current){pushLong(part);continue;}
+    if(current.length+1+part.length<=maxChars)current+=" "+part;
+    else{chunks.push(current);current="";pushLong(part);}
+  }
+  if(current)chunks.push(current);
+  return chunks.filter(Boolean);
 }
 
 async function sayDevice(text){
@@ -3450,6 +3579,8 @@ async function playBuffer(bytes){
 }
 
 function hush(){
+  VOICE.generation++;
+  VOICE.holdMic=false;
   VOICE.queue.length = 0;
   if(VOICE.pending){
     const pending = VOICE.pending;
@@ -3579,6 +3710,28 @@ function setAffect(emotion,opts={}){
   const mood=$("#btnMood");if(mood){mood.textContent=emotion;mood.title=emotion+" because "+reason;}
   return true;
 }
+function interactionAffectForText(text){
+  const t=String(text||"").trim();
+  if(!t)return {emotion:"listening",reason:"a person has OwlBot's attention"};
+  if(/\b(?:danger|fire|smoke|hurt|injured|emergency|i(?:'m| am) scared|help me)\b/i.test(t))
+    return {emotion:"worried",reason:"the person described possible danger or distress"};
+  if(/\b(?:did(?:n't| not) work|failed|wrong|try (?:again|another|a different)|different idea|new approach)\b/i.test(t))
+    return {emotion:"determined",reason:"a harmless setback calls for a different attempt"};
+  if(/\b(?:we (?:did it|solved it)|you were right|prediction was right|great job|well done|success|worked perfectly)\b/i.test(t))
+    return {emotion:"happy",reason:"the person shared a success or celebrated progress together"};
+  if(/\b(?:joke|game|play|silly|funny|make me laugh)\b/i.test(t))
+    return {emotion:"playful",reason:"the person invited humor or play"};
+  if(/[?]|\b(?:mystery|wonder|unexpected|test|experiment|figure out|what if|why|how|show you|look at)\b/i.test(t))
+    return {emotion:"curious",reason:"the person introduced a question or something uncertain to investigate"};
+  if(/\b(?:hello|hi|good morning|good evening|thank you|thanks|nice to see you)\b/i.test(t))
+    return {emotion:"happy",reason:"the person made a warm social connection"};
+  return {emotion:"listening",reason:"the person is sharing something that deserves attention"};
+}
+function appraiseUserInteraction(text){
+  const a=interactionAffectForText(text);
+  setAffect(a.emotion,{source:"interaction",reason:a.reason,durationMs:12000,confidence:.9,force:true});
+  return a;
+}
 function appraisedAffect(){
   const t=Date.now();
   if(t<AFFECT.until)return AFFECT.emotion;
@@ -3602,9 +3755,18 @@ function contextualFaceState(){
   // Protective physical truth always outranks conversational personality.
   if(THERMAL.paused||thermalSerious())return {emotion:"hot",reason:"Android thermal protection is active"};
   if(APP.resting)return {emotion:"sleepy",reason:"the user placed OwlBot in Rest"};
-  if(S.fallen)return {emotion:"afraid",reason:"phone posture confirms OwlBot is fallen"};
-  if(recent(AMBIENT.freefallAt,1800)||recent(AMBIENT.lastDrop,2600))
-    return {emotion:"afraid",reason:"the accelerometer recently measured free fall"};
+  if(S.fallen){
+    const fallAge=t-Number(FALL.fallAt||t);
+    if(fallAge<2400)return {emotion:"afraid",reason:"a dynamic impact and changed posture confirmed a recent fall"};
+    if(fallAge<9000)return {emotion:"worried",reason:"posture is still away from the calibrated upright direction after a fall"};
+    // The movement interlock remains active, but old danger must not freeze the
+    // whole personality. After the acute reaction, expose the unresolved fact
+    // as uncertainty so live interaction and a fresh appraisal can be seen.
+    if(!EARS.on&&!MIND.busy&&!VOICE.speaking)
+      return {emotion:"confused",reason:"upright recovery is still unconfirmed; recalibration or help may be needed"};
+  }
+  if(recent(AMBIENT.freefallAt,900)||recent(AMBIENT.lastDrop,1500))
+    return {emotion:"surprised",reason:"the accelerometer recently measured brief free fall, but posture is not yet a confirmed fall"};
   if(recent(AMBIENT.lastShake,1600)&&AMBIENT.motionScore>1.4)
     return {emotion:"surprised",reason:"the phone just experienced sudden strong motion"};
   if(battery!=null&&battery<10&&!power.plugged)return {emotion:"worried",reason:"phone battery is critically low"};
@@ -3613,8 +3775,14 @@ function contextualFaceState(){
   // hearing, thinking, speaking, or uncertain about the result.
   if(EARS.state==="speech"||EARS.on||t-EARS.partialAt<1200)
     return {emotion:"listening",reason:"speech capture is active"};
+  if(MIDI_PLAYER.playing)return {emotion:"playful",reason:"OwlBot is playing with a melody"};
+  if(VOICE.speaking){
+    const fresh=Date.now()-Number(AFFECT.updatedAt||0)<30000&&AFFECT.emotion!=="neutral";
+    return {emotion:fresh?AFFECT.emotion:(AFFECT.valence>.45?"happy":"focused"),
+      reason:fresh?AFFECT.reason:"OwlBot is speaking its current response"};
+  }
+  if(VOICE.busy)return {emotion:"thinking",reason:"the spoken response is being prepared"};
   if(MIND.busy||PERCEPTION.busy)return {emotion:"thinking",reason:PERCEPTION.busy?"visual evidence is being interpreted":"the mind is working on the current turn"};
-  if(VOICE.speaking)return {emotion:AFFECT.valence>.45?"happy":"focused",reason:"OwlBot is speaking its current response"};
   if((MIND.failures||0)>=2)return {emotion:"confused",reason:"repeated mind-provider failures left the answer unresolved"};
 
   // Once immediate physical/interaction truth is represented, a fresh model
@@ -3640,7 +3808,7 @@ function contextualFaceState(){
   if(BATT.charging&&battery!=null&&battery<35)return {emotion:"relieved",reason:"a low phone battery is now charging"};
   if(AMBIENT.petting&&recent(AMBIENT.lastTouchT,4500))
     return {emotion:"loving",reason:"the touchscreen registered repeated friendly contact"};
-  if((AMBIENT.lastEvent==="poke"||AMBIENT.lastEvent==="rock")&&recent(AMBIENT.lastEventAt,2800))
+  if((AMBIENT.lastEvent==="poke"||AMBIENT.lastEvent==="rock")&&recent(AMBIENT.lastEventAt,3600))
     return {emotion:"playful",reason:"a recent tap or gentle rocking invited play"};
   if(SEEN.present&&!verifiedIdentity())return {emotion:"curious",reason:"a person is present but their identity is unresolved"};
 
@@ -3700,7 +3868,7 @@ const FACE = {
   cur: Object.assign({}, EXPRESSIONS.neutral),
   tgt: Object.assign({}, EXPRESSIONS.neutral),
   name:"neutral", forced:null, forcedUntil:0,
-  blink:0, nextBlink:0, lookX:0, lookY:0,
+  blink:0, nextBlink:0, lookX:0, lookY:0, moodSince:0,
   gazeTX:0, gazeTY:0, nextSaccade:0, saccadeUntil:0, pursue:false,
   mouth:0, squash:0, t0:performance.now(), talking:false,
   lastTouch:0,
@@ -3787,6 +3955,8 @@ const FACE = {
      jumped to. */
   gaze(t, mood){
     const tracking = SEEN.found && (t - SEEN.lastSeen) < 700;
+    const attending = !tracking && Date.now()<VISUAL_ATTENTION.until &&
+      VISUAL_ATTENTION.facing===S.cameraFacing;
 
     if(tracking){
       // smooth pursuit: lock on and follow
@@ -3794,6 +3964,13 @@ const FACE = {
       this.gazeTY = SEEN.y * 0.7;
       this.nextSaccade = t + 900 + Math.random()*900;
       this.pursue = true;
+    } else if(attending){
+      // When the perception model names a grounded focus, the eyes hold that
+      // visible target. A currently tracked human face always wins.
+      this.gazeTX=VISUAL_ATTENTION.x*.9;
+      this.gazeTY=VISUAL_ATTENTION.y*.8;
+      this.nextSaccade=t+500;
+      this.pursue=true;
     } else if(t > this.nextSaccade){
       this.pursue = false;
       // where would it plausibly look next?
@@ -3838,7 +4015,12 @@ const FACE = {
     const t = now();
     const name = this.mood();
     const live=currentAffectSnapshot();
-    if(name !== this.name)this.name=name;
+    if(name !== this.name){
+      const previous=this.name;this.name=name;this.moodSince=t;this.bounceV+=name==="surprised"?.1:.035;
+      if(["excited","playful","proud","relieved"].includes(name))burst("sparkle",name==="excited"?10:4);
+      if(name==="loving")burst("heart",5);
+      if(name==="sad"&&previous!=="afraid")burst("tear",2);
+    }
     if($("#btnMood").textContent!==name)$("#btnMood").textContent=name;
     const context=contextualFaceState();
     const moodTitle=name+" because "+(context&&context.emotion===name?context.reason:
@@ -4062,13 +4244,18 @@ const FACE = {
     c.stroke();
     c.save();
     c.shadowColor = "#ffb454"; c.shadowBlur = 22*S0;
-    c.fillStyle = (S.link||S.sim) ? "#ffb454" : "#3a4358";
+    const bodyReady=bodyControllerReady();
+    c.fillStyle = bodyReady ? (S.running?"#78ffbf":"#ffb454") : (S.link?"#9a7448":"#3a4358");
     c.beginPath(); c.arc(ax + sway, ay, 11*S0, 0, 7); c.fill();
+    if(bodyReady){
+      c.globalAlpha=.22+.16*(1+Math.sin(t/320))/2;c.strokeStyle=S.running?"#78ffbf":"#ffb454";
+      c.lineWidth=3*S0;c.beginPath();c.arc(ax+sway,ay,(17+5*Math.sin(t/420))*S0,0,7);c.stroke();
+    }
     c.restore();
 
     // ---- hearing: a ring that breathes with the mic, so you can SEE that it
     // is listening without reading any text.
-    if(EARS.on){
+    if(EARS.on||EARS.handsFree){
       const lvl = clamp((EARS.level - EARS.floor)*2.2, 0, 1);
       const hy = my + 92*S0;                    // just below the mouth
       const rr = 22*S0 + lvl*26*S0;
@@ -4123,6 +4310,27 @@ const FACE = {
       const vx=cx+eyeDX+R*.9,vy=eyeY-R*1.18;
       c.beginPath();c.moveTo(vx-18*S0,vy);c.lineTo(vx-5*S0,vy-13*S0);
       c.lineTo(vx+2*S0,vy+2*S0);c.lineTo(vx+17*S0,vy-10*S0);c.stroke();c.restore();
+    }else if(this.name==="curious"){
+      c.save();c.fillStyle="rgba(145,245,225,.92)";c.textAlign="center";
+      c.font=`800 ${34*S0}px system-ui,sans-serif`;
+      c.fillText("?",cx+eyeDX+R*.92,eyeY-R*(.88+.08*Math.sin(t/360)));c.restore();
+    }else if(this.name==="thinking"){
+      c.save();c.fillStyle="rgba(180,218,255,.82)";
+      for(let i=0;i<3;i++){
+        const a=t/520+i*2.09,r=(5+i*2)*S0;
+        c.beginPath();c.arc(cx+Math.cos(a)*34*S0,cy-190*S0+Math.sin(a)*13*S0,r,0,7);c.fill();
+      }c.restore();
+    }else if(this.name==="playful"){
+      c.save();c.translate(cx+eyeDX+R*.9,eyeY-R*.95);c.rotate(t/650);c.fillStyle="rgba(255,218,132,.92)";
+      c.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=(i%2?5:13)*S0;
+        const x=Math.cos(a)*rr,y=Math.sin(a)*rr;i?c.lineTo(x,y):c.moveTo(x,y);}c.closePath();c.fill();c.restore();
+    }else if(this.name==="proud"){
+      c.save();c.fillStyle="rgba(255,211,104,.9)";c.strokeStyle="rgba(255,238,176,.95)";c.lineWidth=2*S0;
+      const y=cy-202*S0,w=58*S0;c.beginPath();c.moveTo(cx-w/2,y+22*S0);c.lineTo(cx-w*.36,y);
+      c.lineTo(cx,y+13*S0);c.lineTo(cx+w*.36,y);c.lineTo(cx+w/2,y+22*S0);c.closePath();c.fill();c.stroke();c.restore();
+    }else if(this.name==="relieved"){
+      c.save();c.strokeStyle="rgba(166,240,224,.72)";c.lineWidth=4*S0;c.lineCap="round";
+      for(const side of [-1,1]){c.beginPath();c.arc(cx+side*(eyeDX+R*.25),eyeY,24*S0,Math.PI*.15,Math.PI*.85);c.stroke();}c.restore();
     }else if(this.name==="confused"){
       c.save();c.fillStyle="rgba(186,214,255,.88)";c.textAlign="center";
       c.font=`700 ${42*S0}px system-ui,sans-serif`;c.fillText("?",cx+eyeDX+R*.9,eyeY-R*.9);c.restore();
@@ -4141,6 +4349,15 @@ const FACE = {
         c.beginPath();c.moveTo(x,y+7*S0);c.bezierCurveTo(x-11*S0,y-2*S0,x-7*S0,y-13*S0,x,y-7*S0);
         c.bezierCurveTo(x+7*S0,y-13*S0,x+11*S0,y-2*S0,x,y+7*S0);c.fill();}
       c.restore();
+    }
+
+    if(VOICE.speaking){
+      c.save();c.strokeStyle=`hsla(${hue} 90% 72% / .72)`;c.lineWidth=3*S0;c.lineCap="round";
+      const pulse=(1+Math.sin(t/115))/2;
+      for(const side of [-1,1])for(let i=0;i<2;i++){
+        const x=cx+side*(mw*.72+i*12*S0),rr=(10+i*7+pulse*4)*S0;
+        c.beginPath();c.arc(x,my,rr,side<0?-Math.PI*.45:Math.PI*.55,side<0?Math.PI*.45:Math.PI*1.45);c.stroke();
+      }c.restore();
     }
 
     // ---- particles
@@ -4211,19 +4428,71 @@ const FACE = {
 let recogListening = false;
 
 /* ================================================================== EARS */
-/* Voice input is push-to-talk. Pressing starts one recognition session;
- * releasing ends capture and asks the recogniser for the final phrase. There
- * is no restart loop, so the mic cannot repeatedly wake itself or hear the
- * creature's own speaker.
- */
+/* Push-to-talk starts one Android recognition session. Continuous conversation
+ * instead uses one quiet native AudioRecord stream with local voice activity
+ * detection, avoiding Samsung's recognizer start/stop beep and restart loop. */
 
 const EARS = {
   on:false, paused:false, state:"idle",
+  handsFree:false, handsFreeWanted:false, handsFreeState:"off",
   level:0, floor:0.12,
   heardAt:0, partialAt:0, sessionAt:0,
   pointer:null, pending:"", releaseTimer:null,
   lastSubmitted:"", lastSubmittedAt:0
 };
+const HANDS_FREE_WANTED_KEY="owlbot_hands_free_wanted_v1";
+
+function handsFreeActive(){
+  return Boolean(EARS.handsFree||["starting","listening","hearing","transcribing"].includes(EARS.handsFreeState));
+}
+
+function refreshHandsFreeUI(){
+  const button=$("#btnHandsFree"),out=$("#handsFreeOut");
+  if(!button||!out)return;
+  const active=handsFreeActive();
+  button.textContent=active?"Continuous conversation: on":"Continuous conversation: off";
+  button.classList.toggle("primary",active);
+  out.textContent=active
+    ? (EARS.handsFreeState==="hearing"?"I hear speech now. Audio is captured locally until this utterance ends.":
+       EARS.handsFreeState==="transcribing"?"Transcribing the completed utterance; the ear will resume after the response.":
+       "Ears are open. Audio stays local until speech is detected; only a completed utterance is sent for transcription.")
+    : "Turn this on for continuous conversation. Android system transcription needs no extra key; the ear pauses while OwlBot speaks and rejects likely echoes of its own recent voice.";
+  refreshHearingModeBadge();
+}
+
+function refreshHearingModeBadge(){
+  const b=$("#btnEars");if(!b)return;
+  const selected=$("#vInputMode")?.value==="handsfree";
+  b.textContent=selected?(EARS.handsFree?"ears: open":"ears: off"):"ears: push";
+  b.classList.toggle("talk",Boolean(EARS.handsFree));
+}
+
+function setHandsFreeConversation(enabled,{persist=true}={}){
+  enabled=Boolean(enabled);
+  EARS.handsFreeWanted=enabled;
+  if(persist){
+    try{localStorage.setItem(HANDS_FREE_WANTED_KEY,enabled?"1":"0");}catch(e){}
+  }
+  if(!enabled){
+    EARS.handsFree=false;EARS.handsFreeState="off";
+    try{if(NATIVE&&NATIVE.setHandsFree)NATIVE.setHandsFree(false,"","");}catch(e){}
+    micBadge();refreshHandsFreeUI();return true;
+  }
+  if(EARS.paused||APP.resting||THERMAL.paused||thermalSerious()){
+    EARS.handsFree=false;EARS.handsFreeState="paused";
+    refreshHandsFreeUI();return false;
+  }
+  try{
+    if(!NATIVE||!NATIVE.setHandsFree)throw new Error("native continuous hearing unavailable");
+    EARS.handsFree=true;EARS.handsFreeState="starting";
+    NATIVE.setHandsFree(true,$("#vSttUrl").value.trim(),$("#vSttModel").value.trim());
+    caption("My ears are open. Just talk to me.");
+    micBadge();refreshHandsFreeUI();return true;
+  }catch(err){
+    EARS.handsFree=false;EARS.handsFreeState="unavailable";
+    refreshHandsFreeUI();return false;
+  }
+}
 
 function earsStart(){
   if(APP.settings || EARS.on) return false;
@@ -4282,11 +4551,13 @@ function earsFinish(send=true){
 function micBadge(){
   const b = $("#btnMic2");
   if(!b) return;
-  b.textContent = EARS.on ? "release"
+  b.textContent = EARS.handsFree ? (EARS.handsFreeState==="hearing"?"hearing":
+      EARS.handsFreeState==="transcribing"?"thinking":"ears open")
+    : EARS.on ? "release"
     : EARS.state === "thinking" ? "sending"
     : "hold talk";
   b.classList.toggle("mute", EARS.paused);
-  b.classList.toggle("talk", EARS.on);
+  b.classList.toggle("talk", EARS.on||EARS.handsFree);
 }
 
 /* A response always wins ownership of the speaker/microphone pair. */
@@ -4294,10 +4565,12 @@ const _origSpeechStart = window.onSpeechStart;
 window.onSpeechStart = () => {
   _origSpeechStart();
   if(EARS.on) earsFinish(false);
+  try{if(NATIVE&&NATIVE.setMicPaused)NATIVE.setMicPaused(true);}catch(e){}
 };
 const _origSpeechEnd = window.onSpeechEnd;
 window.onSpeechEnd = () => {
   _origSpeechEnd();
+  try{if(!VOICE.holdMic&&NATIVE&&NATIVE.setMicPaused&&!EARS.paused)NATIVE.setMicPaused(false);}catch(e){}
 };
 
 /* =============================================================== AMBIENT */
@@ -4367,6 +4640,7 @@ function ambientSay(kind, expression, holdMs, measuredDetail){
   FACE.set(expression,holdMs||2500,{source:kind==="fall"?"critical":"sensor",
     reason:AMBIENT.lastEventDetail,confidence:.92});
   AMBIENT.eventSeq++;
+  requestEventVision(kind,AMBIENT.lastEventDetail);
   if(MIND.on) return;
 
   if(t - AMBIENT.lastLine < 9000) return;
@@ -4374,6 +4648,15 @@ function ambientSay(kind, expression, holdMs, measuredDetail){
   AMBIENT.lastLine = t;
   const pool = LINES[kind];
   if(pool && MIND.voice) say(pool[Math.floor(Math.random()*pool.length)]);
+}
+
+function classifyMotionAppraisal({linMag,spin,jerk,mag,motionScore}){
+  const impact=linMag>3.1||Math.abs(mag-9.81)>3.2||jerk>38;
+  // Smooth rotation with controlled linear acceleration is handling/rocking,
+  // not danger. This check intentionally precedes generic "ordinary motion".
+  const rocking=!impact&&spin>.24&&spin<1.35&&linMag<1.45&&jerk<30;
+  const active=!impact&&!rocking&&(motionScore>.95||linMag>1.0||spin>.85);
+  return impact?"impact":rocking?"rock":active?"motion":"quiet";
 }
 
 function ambientTick(){
@@ -4436,13 +4719,17 @@ function ambientTick(){
     }
   }else AMBIENT.freefallAt=0;
 
-  const strongImpact=haveMotion&&(linMag>3.1||Math.abs(mag-9.81)>3.2||jerk>38);
-  const ordinaryMotion=haveMotion&&(AMBIENT.motionScore>.85||linMag>.85||spin>.68);
-  if(strongImpact&&t-AMBIENT.lastShake>1400){
+  const motionKind=haveMotion?classifyMotionAppraisal({linMag,spin,jerk,mag,
+    motionScore:AMBIENT.motionScore}):"quiet";
+  if(motionKind==="impact"&&t-AMBIENT.lastShake>1800){
     AMBIENT.lastShake=t;AMBIENT.held=false;
     ambientSay("shake","dizzy",3200,"strong acceleration: linear "+linMag.toFixed(2)+
       " m/s2, rotation "+spin.toFixed(2)+" rad/s, jerk "+jerk.toFixed(1)+" m/s3");
-  }else if(ordinaryMotion&&t-AMBIENT.lastShake>1200){
+  }else if(motionKind==="rock"&&t-AMBIENT.lastRock>2200&&!S.fallen){
+    AMBIENT.lastRock=t;FACE.bounceV+=.06;
+    ambientSay("rock","playful",3200,"smooth rocking measured "+spin.toFixed(2)+
+      " rad/s rotation with "+linMag.toFixed(2)+" m/s2 linear acceleration");
+  }else if(motionKind==="motion"&&t-AMBIENT.lastShake>3200){
     AMBIENT.lastShake=t;
     ambientSay("shake","surprised",2200,"phone motion changed: linear acceleration "+linMag.toFixed(2)+
       " m/s2 and rotation "+spin.toFixed(2)+" rad/s");
@@ -4459,12 +4746,6 @@ function ambientTick(){
   }else{
     AMBIENT.sustainedAccelAt=0;
     if(linMag<.18)AMBIENT.held=false;
-  }
-
-  if(haveMotion&&AMBIENT.gyroSlow>.34&&linMag<2.4&&
-     t-AMBIENT.lastRock>1800&&!S.fallen){
-    AMBIENT.lastRock=t;FACE.bounceV+=.06;
-    ambientSay("rock","curious",2200,"orientation changed at "+AMBIENT.gyroSlow.toFixed(2)+" rad/s while acceleration stayed controlled");
   }
 
   /* ---- proximity and being carried ---------------------------------- */
@@ -4761,6 +5042,7 @@ function restNow(){
   APP.restResumeVision=S.camOK;
   APP.restCameraFacing=S.cameraFacing;
   APP.resting=true;
+  pauseBackgroundWorkers("rest mode");
   document.body.classList.add("resting");
   FACE.resize();
   stopMind();hush();earsPause(true);
@@ -4848,6 +5130,8 @@ const MEM_KEY = "growbot_memory_v1";
 const MEM = {
   people: {},        // name -> {name, met, seen, times, notes[], feeling}
   conversations: [], // {t, person, user, owl} - local long-term conversation memory
+  longTerm: [],      // reinforced semantic/autobiographical memories, independent of transcript caps
+  summaries: [],     // compact reflection summaries across older periods
   episodes: [],      // {t, what, outcome, detail}
   lessons: [],       // {t, text, weight}
   facts: [],         // {t, text}
@@ -4857,7 +5141,8 @@ const MEM = {
   pendingTeaching:null,
   currentPerson: null,
   lastReflect: 0,
-  reflections: 0
+  reflections: 0,
+  longTermBackfillVersion:0
 };
 
 function isUngroundedEmbodimentText(text){
@@ -4910,12 +5195,18 @@ function memLoad(){
   }catch(e){}
   MEM.people = MEM.people && typeof MEM.people === "object" ? MEM.people : {};
   MEM.conversations = Array.isArray(MEM.conversations) ? MEM.conversations : [];
+  MEM.longTerm = Array.isArray(MEM.longTerm) ? MEM.longTerm : [];
+  MEM.summaries = Array.isArray(MEM.summaries) ? MEM.summaries : [];
   MEM.episodes = Array.isArray(MEM.episodes) ? MEM.episodes : [];
   MEM.lessons = Array.isArray(MEM.lessons) ? MEM.lessons : [];
   MEM.facts = Array.isArray(MEM.facts) ? MEM.facts : [];
   MEM.shared = Array.isArray(MEM.shared) ? MEM.shared : [];
   MEM.rituals = Array.isArray(MEM.rituals) ? MEM.rituals : [];
   MEM.initiatives = Array.isArray(MEM.initiatives) ? MEM.initiatives : [];
+  if(Number(MEM.longTermBackfillVersion||0)<1){
+    for(const c of MEM.conversations.slice(-100))rememberDurableUserStatement(c.user);
+    MEM.longTermBackfillVersion=1;
+  }
   const ritualsBefore=MEM.rituals.length;
   const sharedBefore=JSON.stringify(MEM.shared);
   learnRitualsFromHistory();
@@ -4932,7 +5223,11 @@ function memSave(){
   sanitizeMemory();
   // Episodes are raw experience: keep the most recent and let the rest go.
   MEM.episodes = MEM.episodes.slice(-120);
-  MEM.conversations = MEM.conversations.slice(-100);
+  MEM.conversations = MEM.conversations.slice(-240);
+  MEM.longTerm = MEM.longTerm.slice().sort((a,b)=>(b.salience||0)-(a.salience||0)||
+    (b.reinforced||1)-(a.reinforced||1)||(b.updated||b.t)-(a.updated||a.t)).slice(0,180)
+    .sort((a,b)=>(a.t||0)-(b.t||0));
+  MEM.summaries = MEM.summaries.slice(-48);
   MEM.facts    = MEM.facts.slice(-40);
   MEM.shared   = MEM.shared.slice(-30);
   MEM.rituals  = MEM.rituals.slice(-20);
@@ -5020,6 +5315,43 @@ function learnLesson(text){
   return true;
 }
 
+function memorySimilarity(a,b){
+  const A=new Set(memoryTerms(a)),B=new Set(memoryTerms(b));
+  if(!A.size||!B.size)return String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase()?1:0;
+  let overlap=0;for(const x of A)if(B.has(x))overlap++;
+  return overlap/Math.max(1,new Set([...A,...B]).size);
+}
+
+function storeLongTermMemory(kind,text,options={}){
+  text=String(text||"").replace(/\s+/g," ").trim().slice(0,260);
+  if(text.length<10||isUngroundedEmbodimentText(text)||isTransientBodyStateText(text))return false;
+  const person=String(options.person||MEM.currentPerson||"").toLowerCase()||null;
+  const salience=clamp(Number(options.salience)||.62,.1,1),t=Date.now();
+  let existing=MEM.longTerm.find(x=>x.kind===kind&&x.person===person&&memorySimilarity(x.text,text)>=.68);
+  if(existing){
+    existing.reinforced=(existing.reinforced||1)+1;existing.updated=t;
+    existing.salience=Math.max(Number(existing.salience)||0,salience);
+    existing.evidence=Array.isArray(existing.evidence)?existing.evidence:[];
+    const ev=String(options.evidence||text).slice(0,220);
+    if(ev&&!existing.evidence.some(x=>memorySimilarity(x,ev)>.82))existing.evidence.push(ev);
+    existing.evidence=existing.evidence.slice(-5);memSave();return existing;
+  }
+  const item={id:"memory-"+t.toString(36)+"-"+Math.random().toString(36).slice(2,6),t,updated:t,
+    kind:String(kind||"fact").slice(0,32),person,text,salience,reinforced:1,lastRecalled:0,
+    evidence:[String(options.evidence||text).slice(0,220)]};
+  MEM.longTerm.push(item);memSave();return item;
+}
+
+function rememberDurableUserStatement(text){
+  const raw=String(text||"").replace(/\s+/g," ").trim();
+  if(raw.length<8||raw.length>600)return false;
+  const durable=/\b(?:remember (?:that|this)|don't forget|my (?:favorite|name|birthday|job|work|project)|i (?:really )?(?:like|love|prefer|hate|dislike)|we (?:are|were|always|usually|built|use)|you (?:should|need to|keep|always|never)|that is (?:wrong|not right)|i told you)\b/i.test(raw);
+  if(!durable||/\b(?:right now|currently|battery|temperature|magnetometer (?:reads?|is at)|degrees?|percent)\b/i.test(raw))return false;
+  const kind=/\b(?:wrong|not right|i told you|you (?:should|need to|always|never))\b/i.test(raw)?"correction":
+    /\b(?:like|love|prefer|favorite|hate|dislike)\b/i.test(raw)?"preference":"owner_fact";
+  return Boolean(storeLongTermMemory(kind,"The person said: "+raw,{salience:kind==="correction"?.92:.78,evidence:raw}));
+}
+
 function recall(query){
   const q = String(query||"").toLowerCase();
   const hits = [];
@@ -5035,6 +5367,13 @@ function recall(query){
     if(!q || l.text.toLowerCase().includes(q)) hits.push("lesson: "+l.text);
   for(const f of MEM.facts)
     if(!q || f.text.toLowerCase().includes(q)) hits.push("fact: "+f.text);
+  const qTerms=memoryTerms(q);
+  for(const m of MEM.longTerm.map(m=>({m,score:qTerms.length?memorySimilarity(q,m.text):
+      (Number(m.salience)||0)+Math.min(.25,(Number(m.reinforced)||1)*.04)}))
+      .filter(x=>!qTerms.length||x.score>.08).sort((a,b)=>b.score-a.score||b.m.updated-a.m.updated).slice(0,10)){
+    m.m.lastRecalled=Date.now();
+    hits.push("long-term "+m.m.kind+" (reinforced "+(m.m.reinforced||1)+"x): "+m.m.text);
+  }
   for(const e of MEM.episodes.slice(-40))
     if(q && e.what.toLowerCase().includes(q))
       hits.push(ago(e.t)+" ["+e.outcome+"] "+e.what);
@@ -5055,6 +5394,7 @@ function rememberConversation(userText, owlText){
   MEM.conversations.push({
     t:Date.now(), person:MEM.currentPerson||null, user, owl
   });
+  rememberDurableUserStatement(user);
   learnRelationshipFromTurn(user,owl);
   memSave();
   return true;
@@ -5154,7 +5494,7 @@ const INNER = {
  * It tracks broad topics across speech, goals, and observations, then puts a
  * saturated subject on a temporary cooldown unless the person asks for it. */
 const BEHAVIOR_KEY="owlbot_behavior_v1";
-const BEHAVIOR={schema:1,recentTopics:[],cooldowns:{},lastTopic:"",streak:0,
+const BEHAVIOR={schema:2,recentTopics:[],cooldowns:{},lastTopic:"",streak:0,
   ownerBoundaries:[],socialCount:0,lastMode:"",loaded:false};
 const TOPIC_GROUPS={
   light_and_sky:["light","lighting","lux","dark","skylight","sun","cloud","shadow","brightness","ceiling"],
@@ -5164,6 +5504,7 @@ const TOPIC_GROUPS={
   play_and_language:["joke","funny","silly","game","word","phrase","riddle","pretend","play"],
   visible_objects:["object","thing","fixture","wall","window","picture","can","box","plant"],
   sound_and_music:["sound","music","song","voice","listen","hear","rhythm"],
+  sensors_and_fields:["magnetometer","magnetic","magnet","compass","field","accelerometer","gyroscope","orientation","sensor"],
   nature_and_animals:["animal","bird","tree","leaf","plant","dog","weather","outside"]
 };
 function behaviorTopic(text){
@@ -5181,7 +5522,9 @@ function behaviorSave(){
 }
 function behaviorLoad(){
   let saved=null;try{saved=JSON.parse(localStorage.getItem(BEHAVIOR_KEY)||"null");}catch(e){}
+  const needsReseed=!saved||Number(saved.schema||0)<2;
   if(saved&&typeof saved==="object")Object.assign(BEHAVIOR,saved);
+  BEHAVIOR.schema=2;
   BEHAVIOR.recentTopics=Array.isArray(BEHAVIOR.recentTopics)?BEHAVIOR.recentTopics:[];
   BEHAVIOR.cooldowns=BEHAVIOR.cooldowns&&typeof BEHAVIOR.cooldowns==="object"?BEHAVIOR.cooldowns:{};
   BEHAVIOR.ownerBoundaries=Array.isArray(BEHAVIOR.ownerBoundaries)?BEHAVIOR.ownerBoundaries:[];
@@ -5189,7 +5532,7 @@ function behaviorLoad(){
     const explicit=BEHAVIOR.ownerBoundaries.some(x=>x.topic===coreTopic&&/owner (?:asked|explicitly)/i.test(x.reason||""));
     if(!explicit)delete BEHAVIOR.cooldowns[coreTopic];
   }
-  if(!saved){
+  if(needsReseed){
     const seed=[];
     for(const c of MEM.conversations.slice(-30))seed.push({t:c.t,topic:behaviorTopic(c.owl),source:"conversation",novelty:.4});
     for(const w of AUTONOMY.world.slice(-16))seed.push({t:w.t,topic:behaviorTopic(w.summary),source:"world",novelty:Number(w.novelty)||0});
@@ -5202,6 +5545,10 @@ function behaviorLoad(){
   if(boundary&&!BEHAVIOR.ownerBoundaries.some(x=>x.reason==="owner asked to move on")){
     const topic=behaviorTopic(boundary.user);if(topic!=="other")setTopicCooldown(topic,60*60*1000,"owner asked to move on",false);
   }
+  const magneticMentions=MEM.conversations.slice(-40).filter(c=>
+    /\b(?:magnetometer|magnetic field|compass reading)\b/i.test(String(c.owl||""))).length;
+  if(magneticMentions>=2)setTopicCooldown("sensors_and_fields",2*60*60*1000,
+    "repeated magnetometer commentary became a fixation",false);
   for(const topic of new Set(BEHAVIOR.recentTopics.map(x=>x.topic))){
     if(!topicCooling(topic)&&topicSaturated(topic))setTopicCooldown(topic,25*60*1000,"historical topic saturation",false);
   }
@@ -5210,6 +5557,8 @@ function behaviorLoad(){
 function noteBehaviorTopic(text,source="speech",novelty=.5){
   const topic=behaviorTopic(text),t=Date.now();
   if(topic==="other")return topic;
+  if(topic==="sensors_and_fields"&&!/\b(?:changed|change|spike|anomaly|unexpected|compare|test|experiment|navigation|heading)\b/i.test(String(text||"")))
+    novelty=Math.min(Number(novelty)||0,.12);
   BEHAVIOR.streak=topic===BEHAVIOR.lastTopic?(Number(BEHAVIOR.streak)||0)+1:1;
   BEHAVIOR.lastTopic=topic;
   BEHAVIOR.recentTopics.push({t,topic,source,novelty:clamp(Number(novelty)||0,0,1)});
@@ -5276,6 +5625,58 @@ function ownerRejectsCurrentWork(text){
  * makes a prediction, seeks evidence, and is changed by the result. */
 const WONDER_KEY="owlbot_wonder_v1";
 const WONDER={threads:[],focusId:null,opened:0,resolved:0,lastRevisitAt:0};
+const CURIOSITY_KEY="owlbot_curiosity_drive_v1";
+const CURIOSITY={drive:.78,appetite:.72,lastFedAt:Date.now(),questions:0,
+  experiments:0,discoveries:0,recentMoves:[]};
+
+function curiosityLoad(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(CURIOSITY_KEY)||"null");
+    if(saved&&typeof saved==="object")Object.assign(CURIOSITY,saved);
+  }catch(e){}
+  CURIOSITY.drive=clamp(Number(CURIOSITY.drive)||.78,.35,1);
+  CURIOSITY.appetite=clamp(Number(CURIOSITY.appetite)||.72,0,1);
+  CURIOSITY.recentMoves=Array.isArray(CURIOSITY.recentMoves)?CURIOSITY.recentMoves.slice(-12):[];
+}
+
+function curiositySave(){
+  CURIOSITY.recentMoves=CURIOSITY.recentMoves.slice(-12);
+  try{localStorage.setItem(CURIOSITY_KEY,JSON.stringify(CURIOSITY));}catch(e){}
+}
+
+function curiosityAppetite(){
+  const quietMinutes=Math.max(0,Date.now()-(Number(CURIOSITY.lastFedAt)||Date.now()))/60000;
+  return clamp(Number(CURIOSITY.appetite||0)+Math.min(.28,quietMinutes*.012),0,1);
+}
+
+function recordCuriosityMove(kind,subject,evidence=""){
+  kind=["question","prediction","experiment","discovery"].includes(kind)?kind:"experiment";
+  const clean=String(subject||evidence||kind).trim().replace(/\s+/g," ").slice(0,180);
+  if(!clean)return;
+  if(kind==="question")CURIOSITY.questions++;
+  if(kind==="experiment")CURIOSITY.experiments++;
+  if(kind==="discovery")CURIOSITY.discoveries++;
+  const nourishment={question:.08,prediction:.1,experiment:.18,discovery:.28}[kind];
+  CURIOSITY.appetite=clamp(curiosityAppetite()-nourishment,0,1);
+  CURIOSITY.drive=clamp(CURIOSITY.drive+(kind==="discovery"?.006:.002),.35,1);
+  CURIOSITY.lastFedAt=Date.now();
+  CURIOSITY.recentMoves.push({t:Date.now(),kind,subject:clean,evidence:String(evidence||"").slice(0,180)});
+  curiositySave();
+}
+
+function isVisibleCuriosityLine(text){
+  const line=String(text||"").trim();
+  if(!line)return false;
+  if(line.includes("?")&&!/\b(?:anything else|how can i help|what can i do for you)\b/i.test(line))return true;
+  return /\b(?:i wonder|my (?:guess|prediction)|what if|let(?:'s| us) (?:test|try|compare|find out)|i want to find out|that surprised me|i expected|i did not expect|the next test)\b/i.test(line);
+}
+
+function curiosityDriveSummary(){
+  const appetite=Math.round(curiosityAppetite()*100);
+  const recent=CURIOSITY.recentMoves.slice(-3).map(x=>x.kind+": "+x.subject).join("; ")||"no visible curiosity move yet";
+  return "learn drive "+Math.round(CURIOSITY.drive*100)+"%, appetite "+appetite+"%. Completed "+
+    CURIOSITY.experiments+" experiments and "+CURIOSITY.discoveries+" discoveries. Recent moves: "+recent+".";
+}
 
 function wonderLoad(){
   try{
@@ -5337,6 +5738,7 @@ function openWonder(args){
     question,why,hypothesis,nextTest,interest:clamp(Number(args.interest)||.62,.15,1),
     status:"open",created:t,updated:t,revisits:0,observations:[{t,text:observation}],evidence:[],surprises:0};
   WONDER.threads.push(thread);WONDER.focusId=thread.id;WONDER.opened++;wonderSave();
+  recordCuriosityMove(hypothesis?"prediction":"question",question,hypothesis||observation);
   LIFE.curiosity=clamp(LIFE.curiosity+.08,0,1);
   logEpisode("became genuinely curious: "+question,"started",observation);
   setAffect("curious",{source:"model",reason:"an encountered uncertainty matters enough to investigate: "+question,
@@ -5364,6 +5766,7 @@ function advanceWonder(args){
   else if(status==="abandoned")WONDER.focusId=null;
   else WONDER.focusId=thread.id;
   wonderSave();
+  recordCuriosityMove(status==="resolved"?"discovery":"experiment",thread.question,evidence);
   logEpisode("revisited a wonder: "+thread.question,status==="resolved"?"worked":status,evidence);
   if(result==="surprised")setAffect("surprised",{source:"outcome",reason:"evidence contradicted the prediction about "+thread.question,
     durationMs:14000,valence:.25,arousal:.9,confidence:.96});
@@ -5384,7 +5787,7 @@ function advanceWonder(args){
  * treated as proof that the phone is physically mounted on the robot. */
 const BEING_KEY="owlbot_being_v1";
 const BEING={
-  schema:3,
+  schema:4,
   identity:{projectName:"OwlBot",name:"",named:false,developmentalAge:6,
     ownerPersona:"",personaConfigured:false,continuityId:"",firstAwake:Date.now(),wakeCount:0},
   embodiment:{phoneMount:"unknown",confidence:0,
@@ -5406,6 +5809,10 @@ const BEING={
       "persist through failure but abandon a disproven premise"
     ]
   },
+  soul:{coreVersion:1,coreValues:["curiosity before pretense","truth before agreement",
+      "care expressed through useful action","reversible experiments before certainty",
+      "growth without erasing continuity"],
+    growth:{habits:[],convictions:[],proposals:[],revisions:[],lastConsolidated:0}},
   beliefs:[],commitments:[],autobiography:[],lastSnapshot:null
 };
 
@@ -5432,6 +5839,13 @@ function beingLoad(){
       connection:1.18,creativity:1.10,stewardship:1.02},saved.personality?.affinities||{});
     BEING.personality.learnedPreferences=Array.isArray(saved.personality?.learnedPreferences)
       ? saved.personality.learnedPreferences.slice(-16):[];
+    const savedSoul=saved.soul||{};
+    BEING.soul=Object.assign({coreVersion:1,coreValues:["curiosity before pretense",
+      "truth before agreement","care expressed through useful action",
+      "reversible experiments before certainty","growth without erasing continuity"]},savedSoul);
+    BEING.soul.growth=Object.assign({habits:[],convictions:[],proposals:[],revisions:[],lastConsolidated:0},savedSoul.growth||{});
+    for(const k of ["habits","convictions","proposals","revisions"])
+      BEING.soul.growth[k]=Array.isArray(BEING.soul.growth[k])?BEING.soul.growth[k]:[];
     if(Number(saved.schema||0)<2){
       BEING.personality.traits.playfulness=Math.max(.58,Number(BEING.personality.traits.playfulness)||0);
       BEING.personality.traits.warmth=Math.max(.72,Number(BEING.personality.traits.warmth)||0);
@@ -5439,7 +5853,6 @@ function beingLoad(){
       if(!BEING.personality.signature.includes(experiment))BEING.personality.signature.splice(-1,0,experiment);
     }
     if(Number(saved.schema||0)<3){
-      BEING.schema=3;
       BEING.identity.projectName="OwlBot";BEING.identity.developmentalAge=6;
       BEING.identity.named=Boolean(saved.identity?.named&&saved.identity?.name&&saved.identity.name!=="OwlBot");
       if(!BEING.identity.named)BEING.identity.name="";
@@ -5457,12 +5870,15 @@ function beingLoad(){
       if(!BEING.personality.signature.includes(child))BEING.personality.signature.splice(2,0,child);
       if(!BEING.personality.signature.includes(asking))BEING.personality.signature.splice(2,0,asking);
     }
+    BEING.schema=4;
   }
   if(!BEING.identity.continuityId)BEING.identity.continuityId=newContinuityId();
   BEING.identity.wakeCount=(Number(BEING.identity.wakeCount)||0)+1;
   BEING.beliefs=Array.isArray(BEING.beliefs)?BEING.beliefs.slice(-24):[];
   BEING.commitments=Array.isArray(BEING.commitments)?BEING.commitments.slice(-12):[];
   BEING.autobiography=Array.isArray(BEING.autobiography)?BEING.autobiography.slice(-30):[];
+  BEING.soul=BEING.soul||{coreVersion:1,coreValues:[],growth:{}};
+  BEING.soul.growth=Object.assign({habits:[],convictions:[],proposals:[],revisions:[],lastConsolidated:0},BEING.soul.growth||{});
   // Recover an explicit recent owner correction. This is testimony, not a
   // sensor measurement, so its source and confidence remain visible.
   const recent=(MEM.conversations||[]).slice(-20).map(x=>String(x.user||"")).join("\n");
@@ -5478,6 +5894,9 @@ function beingSave(){
   BEING.beliefs=BEING.beliefs.slice(-24);BEING.commitments=BEING.commitments.slice(-12);
   BEING.autobiography=BEING.autobiography.slice(-30);
   BEING.personality.learnedPreferences=BEING.personality.learnedPreferences.slice(-16);
+  const growth=BEING.soul.growth;
+  growth.habits=growth.habits.slice(-12);growth.convictions=growth.convictions.slice(-12);
+  growth.proposals=growth.proposals.slice(-20);growth.revisions=growth.revisions.slice(-24);
   try{localStorage.setItem(BEING_KEY,JSON.stringify(BEING));}catch(e){}
   refreshBeingUI();
 }
@@ -5585,7 +6004,37 @@ function migrateSoulProjectName(){
   }
 }
 
-function bodyControllerReady(){return Boolean(S.sim||(S.link&&S.auth));}
+let SOUL_FILE_TEXT="";
+async function loadSoulFile(){
+  try{
+    let text="";
+    if(NATIVE&&typeof NATIVE.readBundledSoul==="function")text=String(NATIVE.readBundledSoul()||"").trim();
+    if(!text){
+      const r=await fetch("SOUL.md",{cache:"no-store"});
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      text=String(await r.text()).trim();
+    }
+    if(text.length<80||text.length>12000)throw new Error("unexpected length");
+    SOUL_FILE_TEXT=text;
+    log("SOUL.md loaded; evolving layer has "+BEING.soul.growth.revisions.length+" accepted revision(s)");
+  }catch(e){
+    SOUL_FILE_TEXT="";
+    log("SOUL.md unavailable; using embedded constitution ("+e.message+")","w");
+  }
+}
+
+function bodyControllerReady(maxAgeMs=15000){
+  if(S.sim)return true;
+  return Boolean(S.link&&S.auth&&S.ws&&S.ws.readyState===1&&
+    S.bodyLastSeenAt&&Date.now()-S.bodyLastSeenAt<maxAgeMs);
+}
+setInterval(()=>{
+  const ready=bodyControllerReady();
+  if(ready===S.bodyReadyObserved)return;
+  S.bodyReadyObserved=ready;setDot(ready);
+  if(!ready&&!S.sim){stopRun();log("remote controller endpoint is stale or unavailable","w");}
+  else if(ready&&!S.sim)log("fresh controller-originated evidence restored endpoint readiness");
+},1000);
 function bodyBenchControlReady(){return bodyControllerReady();}
 function bodyEmbodimentReady(){
   return bodyControllerReady()&&(
@@ -5602,6 +6051,76 @@ function personalitySummary(){
     "%, warm "+Math.round(t.warmth*100)+"%, playful "+Math.round(t.playfulness*100)+"%. "+
     "Behavioral signature: "+BEING.personality.signature.join("; ")+"."+
     (p.length?" Learned preferences: "+p.map(x=>x.stance+" "+x.value).join("; ")+".":"");
+}
+
+function soulSummary(){
+  const g=BEING.soul.growth;
+  return "Stable values: "+BEING.soul.coreValues.join("; ")+". Evolving habits: "+
+    (g.habits.length?g.habits.slice(-5).map(x=>x.value).join("; "):"none established yet")+
+    ". Evolving convictions: "+(g.convictions.length?g.convictions.slice(-5).map(x=>x.value).join("; "):"none established yet")+
+    ". Pending growth hypotheses: "+g.proposals.filter(x=>x.status==="pending").length+"."+
+    (g.revisions.length?" Recent personality evolution: "+g.revisions.slice(-4).map(x=>
+      x.domain+" "+x.subject+" changed from "+x.oldValue+" to "+x.newValue).join("; ")+".":"");
+}
+
+function cleanSoulText(raw,max=140){
+  return String(raw||"").replace(/\s+/g," ").trim().slice(0,max);
+}
+
+function proposeSoulGrowth(args,source="reflection"){
+  args=args||{};
+  const domain=String(args.domain||"").toLowerCase();
+  const allowed=new Set(["trait","affinity","preference","habit","conviction"]);
+  if(!allowed.has(domain))return "soul proposal rejected: unsupported growth domain";
+  const subject=cleanSoulText(args.subject),direction=String(args.direction||"adopt").toLowerCase();
+  const evidence=cleanSoulText(args.evidence,220),confidence=clamp(Number(args.confidence)||0,0,1);
+  if(!subject||evidence.length<12||confidence<.6)return "soul proposal needs a specific subject, grounded evidence, and at least 60% confidence";
+  if(/\b(?:api key|password|secret|permission|safety|law|constitution|source code|javascript|system prompt)\b/i.test(subject+" "+evidence))
+    return "soul proposal rejected: core rules, credentials, permissions, and code are not personality growth";
+  if(/\b(?:right now|currently|today|battery|temperature|fallen|afraid|angry|happy)\b/i.test(subject))
+    return "soul proposal rejected: temporary state is not a durable identity change";
+  if(domain==="trait"&&!Object.prototype.hasOwnProperty.call(BEING.personality.traits,subject))
+    return "soul proposal rejected: unknown trait";
+  if(domain==="affinity"&&!Object.prototype.hasOwnProperty.call(BEING.personality.affinities,subject))
+    return "soul proposal rejected: unknown affinity";
+  const normalized=subject.toLowerCase().replace(/[^a-z0-9]+/g,"_");
+  const key=[domain,normalized,direction].join(":");
+  const g=BEING.soul.growth,t=Date.now();
+  let p=g.proposals.find(x=>x.key===key&&x.status==="pending");
+  if(!p){
+    p={id:"soul-"+t.toString(36),key,domain,subject,direction,status:"pending",created:t,
+      support:[],confidence};g.proposals.push(p);
+  }
+  if(!p.support.some(x=>x.evidence.toLowerCase()===evidence.toLowerCase()))
+    p.support.push({t,evidence,source:cleanSoulText(source,30)});
+  p.support=p.support.slice(-5);p.confidence=Math.max(Number(p.confidence)||0,confidence);p.updated=t;
+  const span=p.support.length>1?p.support[p.support.length-1].t-p.support[0].t:0;
+  if(p.support.length<2||span<60000){beingSave();return "growth hypothesis recorded; it needs distinct evidence on another occasion before it changes the soul";}
+  let oldValue=null,newValue=null;
+  if(domain==="trait"){
+    oldValue=Number(BEING.personality.traits[subject]);
+    const sign=direction==="decrease"?-1:1;newValue=clamp(oldValue+sign*.02,.05,.99);
+    BEING.personality.traits[subject]=newValue;
+  }else if(domain==="affinity"){
+    oldValue=Number(BEING.personality.affinities[subject]);
+    const sign=direction==="decrease"?-1:1;newValue=clamp(oldValue+sign*.04,.55,1.5);
+    BEING.personality.affinities[subject]=newValue;
+  }else if(domain==="preference"){
+    const stance=direction==="avoid"?"avoid":"like";
+    const existing=BEING.personality.learnedPreferences.find(x=>x.value.toLowerCase()===subject.toLowerCase());
+    if(existing){oldValue=existing.stance;existing.stance=stance;existing.reason=evidence;existing.t=t;newValue=stance;}
+    else{oldValue="unformed";newValue=stance;BEING.personality.learnedPreferences.push({t,stance,value:subject,reason:evidence,source:"soul growth"});}
+  }else{
+    const list=domain==="habit"?g.habits:g.convictions;
+    oldValue="unformed";newValue=subject;list.push({t,value:subject,evidence:p.support.slice(),confidence:p.confidence});
+  }
+  p.status="applied";p.applied=t;
+  g.revisions.push({t,proposalId:p.id,domain,subject,oldValue,newValue,
+    why:p.support.map(x=>x.evidence).join(" | ").slice(0,360)});
+  g.lastConsolidated=t;
+  BEING.autobiography.push({t,event:"soul grew",detail:domain+" "+subject+" changed after repeated evidence",source:"reflection"});
+  beingSave();
+  return "soul growth applied and versioned: "+domain+" "+subject+"; previous "+oldValue+", now "+newValue;
 }
 
 function functionalSelfSnapshot(){
@@ -5880,6 +6399,8 @@ function updateTaskRecord(task,args,label){
   const status=String(args.status||"progress").toLowerCase();
   const evidence=String(args.evidence||"").trim().replace(/\s+/g," ").slice(0,220);
   if(!evidence)return "task update rejected: cite what actually happened";
+  if(status==="complete"&&label==="owner"&&personalGoalSimilarity(evidence,task.title+" "+(task.why||""))<.12)
+    return "owner task completion rejected: the evidence does not address the assigned task";
   task.updated=Date.now();task.evidence.push({t:Date.now(),text:evidence});
   task.evidence=task.evidence.slice(-12);
   if(status==="complete"){
@@ -5924,11 +6445,13 @@ function refreshTaskUI(){
   const out=$("#taskOut");if(!out)return;
   const open=TASKS.items.filter(x=>/^(?:queued|active|blocked)$/.test(x.status));
   const done=TASKS.items.filter(x=>x.status==="complete").length;
-  out.textContent=open.length
+  const workers=typeof activeBackgroundJobs==="function"?activeBackgroundJobs().length:0;
+  out.textContent=(open.length
     ? open.slice(0,7).map((x,i)=>(i+1)+". ["+(x.source==="self"?"SELF":"OWNER")+
       " · "+x.status.toUpperCase()+"] "+x.title).join("\n")+
       (done?"\nCompleted: "+done:"")
-    : "No persistent task queued."+(done?" Completed: "+done:"");
+    : "No persistent task queued."+(done?" Completed: "+done:""))+
+    (workers?"\nBackground sub-agents active: "+workers:"");
 }
 
 function autonomyLoad(){
@@ -6462,7 +6985,7 @@ function nextAutonomyCycle(){
     "INITIATIVE MODE: "+mode+". "+initiativeInstruction(mode)+" "+
     (retired?"Executive replan: "+retired+". ":"")+
     (personHere?"A person is visible; include them in consequence prediction without treating presence as an automatic prohibition. ":"No person is currently confirmed in view. ")+
-    "Body controller "+(body?"is connected":"is unavailable")+"; phone mount "+
+    "Remote controller endpoint "+(body?"is freshly responding":"is unavailable")+"; this does not establish proximity; phone mount "+
     BEING.embodiment.phoneMount+"; body assembly "+BEING.embodiment.bodyAssembly+
     "; controller-only bench tests "+(bodyBenchControlReady()?"are available":"are unavailable")+"; navigation "+
     (canMove?"is grounded and available for autonomous action":"is not grounded as embodied travel")+". "+
@@ -6648,9 +7171,6 @@ function goalEvent(event, detail){
   if(earnedPride){
     FACE.set("proud",12000,{source:"outcome",reason:"completed the goal from observed evidence: "+g.title,
       confidence:.95});burst("sparkle",14);chirp("level");
-  }else{
-    FACE.set("neutral",3500,{source:"outcome",reason:"completed the immediate interaction without a larger accomplishment",
-      valence:.15,arousal:.24,confidence:.96});
   }
   const finished = g.title;
   setTimeout(()=>{ chooseGoal(false); }, 1800);
@@ -6781,15 +7301,17 @@ async function reflect(force){
         messages:[
           {role:"system", content:
             "You are the reflective part of a small learning creature. You are "+
-            "given a log of events and conversations. Extract at most three "+
-            "SHORT lessons it should carry forward - things that would change "+
-            "what it does next time. Prefer lessons drawn from failures and "+
-            "from what worked, plus stable preferences the person explicitly "+
-            "demonstrated. Do not turn a one-off topic into a permanent rule. "+
-            "One per line, no numbering, no preamble. "+
+            "given a log of events and conversations. Extract at most three short lessons "+
+            "and at most three durable memories. A durable memory is a stable preference, correction, "+
+            "commitment, relationship fact, recurring project fact, or meaningful autobiographical event; "+
+            "never store a greeting, temporary state, raw sensor reading, or model guess. "+
+            "that would change what it does next time. A durable soul-growth hypothesis is "+
+            "allowed only when repeated evidence suggests a stable trait, affinity, preference, "+
+            "habit, or conviction; one event is never enough. Prefer failures, verified outcomes, "+
+            "and stable preferences the person explicitly demonstrated. Return JSON only: "+
+            "{\"lessons\":[\"short lesson\"],\"memories\":[{\"kind\":\"preference|correction|commitment|relationship|project|autobiographical\",\"text\":\"grounded durable memory\",\"evidence\":\"supporting words from the log\",\"salience\":0.0}],\"growth\":[{\"domain\":\"trait|affinity|preference|habit|conviction\",\"subject\":\"concise target\",\"direction\":\"increase|decrease|like|avoid|adopt|revise\",\"evidence\":\"two or more concrete observations\",\"confidence\":0.0}]}. "+
             "Do not invent or infer bodily feelings, touch, weather, rain, or "+
-            "physical sensations from the log. If there is nothing worth "+
-            "learning, reply with the single word NONE."},
+            "physical sensations from the log. Use empty arrays when nothing is worth learning."},
           {role:"user", content: digest}
         ]})
     });
@@ -6799,15 +7321,32 @@ async function reflect(force){
     MEM.lastReflect = Date.now();
     const out = ((j.choices||[{}])[0].message||{}).content || "";
     if(/^\s*NONE\s*$/i.test(out)) return;
+    let reflection=null;
+    try{reflection=JSON.parse(String(out).replace(/^```(?:json)?\s*|\s*```$/g,""));}catch(e){}
     let n = 0;
-    for(const line of out.split("\n")){
-      const t = line.replace(/^[-*\d.\s]+/,"").trim();
+    const lessonLines=reflection&&Array.isArray(reflection.lessons)?reflection.lessons:out.split("\n");
+    for(const line of lessonLines){
+      const t = String(line||"").replace(/^[-*\d.\s]+/,"").trim();
       if(t.length > 8 && n < 3){ learnLesson(t); n++; }
+    }
+    let memoryN=0;
+    for(const item of (reflection&&Array.isArray(reflection.memories)?reflection.memories:[]).slice(0,3)){
+      const text=String(item.text||"").trim(),evidence=String(item.evidence||"").trim();
+      const grounded=memoryTerms(text+" "+evidence).filter(w=>digest.toLowerCase().includes(w)).length>=2;
+      if(grounded&&storeLongTermMemory(String(item.kind||"reflection"),text,
+          {salience:clamp(Number(item.salience)||.65,.35,.95),evidence}))memoryN++;
+    }
+    let growthN=0;
+    for(const proposal of (reflection&&Array.isArray(reflection.growth)?reflection.growth:[]).slice(0,2)){
+      const result=proposeSoulGrowth(proposal,"reflection");
+      if(!/rejected/i.test(result))growthN++;
     }
     if(n){
       mindLog("<span class='w'>learned "+n+" thing"+(n>1?"s":"")+" from what happened</span>");
       log("reflection: "+n+" new lesson(s)");
     }
+    if(growthN)log("reflection: "+growthN+" soul-growth hypothesis update(s)");
+    if(memoryN)log("reflection: "+memoryN+" durable long-term memor"+(memoryN===1?"y":"ies"));
   }catch(e){ /* reflection is best-effort; never let it break the loop */ }
   finally{
     if(MIND.abort === controller) MIND.abort = null;
@@ -6850,9 +7389,19 @@ function memorySummary(query){
     out.push("Shared history that earned a callback:\n"+MEM.shared.slice(-5)
       .map(x=>"- "+ago(x.t)+" with "+x.person+": "+x.text).join("\n"));
   }
+  if(MEM.longTerm.length){
+    const q=String(query||""),currentPersonKey=currentKey||MEM.currentPerson||null;
+    const ranked=MEM.longTerm.map(m=>{
+      const relevance=memorySimilarity(q,m.text),personBoost=currentPersonKey&&m.person===currentPersonKey?.22:0;
+      const strength=Math.min(.32,(Number(m.reinforced)||1)*.05)+(Number(m.salience)||0)*.34;
+      return {m,score:relevance*1.8+personBoost+strength};
+    }).sort((a,b)=>b.score-a.score||b.m.updated-a.m.updated).slice(0,10);
+    out.push("Durable long-term memory (reinforced summaries, not guesses):\n"+ranked.map(x=>
+      "- ["+x.m.kind+", "+(x.m.reinforced||1)+"x] "+x.m.text).join("\n"));
+  }
   if(MEM.conversations.length){
     const terms=memoryTerms(query);
-    const recent=MEM.conversations.slice(-4);
+    const recent=MEM.conversations.slice(-5);
     const relevant=terms.length ? MEM.conversations.map(c=>{
       const text=(c.user+" "+c.owl).toLowerCase();
       return {c,score:terms.reduce((n,w)=>n+(text.includes(w)?1:0),0)};
@@ -6895,16 +7444,210 @@ const MIND = {
   lastAmbientSeq:0, nextProactiveAt:0,
   socialTurn:false,socialTimer:null,socialMode:"",lastSocialAt:0,nextSocialAt:0,
   lastAskedQuestion:"",lastQuestionAt:0,pendingAnswerContext:"",
-  autonomyTurn:false, perceptionTurn:false, autonomyMotionCalls:0,
+  autonomyTurn:false, perceptionTurn:false, autonomyMotionCalls:0,activeUserTurn:false,
   visionReport:"",visionReportAt:0,visionReportFacing:""
 };
 const PERCEPTION={
   on:false,busy:false,timer:null,abort:null,nextAt:0,lastAttemptAt:0,lastSuccessAt:0,
   reports:0,meaningfulChanges:0,stableRuns:0,lastSimilarity:1,lastChange:"none",
-  journal:[],lastPerson:false,lastFlowEnergy:0
+  journal:[],lastPerson:false,lastFlowEnergy:0,eventReason:"",eventKind:"",
+  lastEventVisionAt:0,eventCaptures:0
 };
+const VISUAL_ATTENTION={x:0,y:0,label:"",source:"",facing:"",updatedAt:0,until:0};
 const APP = {settings:false, resumeMind:false, resting:false,
   restResumeMind:false, restResumeVision:false, restCameraFacing:"front"};
+
+/* Background sub-agents own bounded jobs independently of the conversational
+   turn. A new user sentence aborts only the foreground model; it never erases
+   a worker's context or completion. Workers cannot control movement/camera. */
+const BACKGROUND_KEY="owlbot_background_workers_v1";
+const BACKGROUND={jobs:[],running:new Map(),maxConcurrent:2,lastProactiveAt:0};
+function backgroundSave(){
+  const safe=BACKGROUND.jobs.slice(-30).map(x=>Object.assign({},x,{controller:undefined}));
+  try{localStorage.setItem(BACKGROUND_KEY,JSON.stringify(safe));}catch(e){}
+  refreshTaskUI();
+}
+function backgroundLoad(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(BACKGROUND_KEY)||"null");
+    if(Array.isArray(saved))BACKGROUND.jobs=saved;
+  }catch(e){}
+  BACKGROUND.jobs=BACKGROUND.jobs.filter(x=>x&&x.id&&x.task).map(x=>Object.assign({
+    type:"exploration",origin:"autonomous",status:"queued",result:"",error:"",
+    created:Date.now(),updated:Date.now(),announced:false,tools:[]},x)).slice(-30);
+  for(const job of BACKGROUND.jobs)if(job.status==="running")job.status="queued";
+  BACKGROUND.lastProactiveAt=BACKGROUND.jobs.reduce((latest,job)=>
+    job.origin==="autonomous"?Math.max(latest,Number(job.created)||0):latest,0);
+  backgroundSave();
+}
+function activeBackgroundJobs(){return BACKGROUND.jobs.filter(x=>/^(?:queued|running)$/.test(x.status));}
+function backgroundNeedsVision(task){
+  return userNeedsFreshVision(task)||/\b(?:visible|visually|appearance|color|illuminated|lit|wearing|shown|pictured|in front of|on the (?:desk|table|floor)|current scene)\b/i.test(String(task||""));
+}
+function backgroundNeedsRetrieval(task){
+  return /\b(?:current|today|tonight|latest|recent|news|weather|forecast|price|schedule|online|internet|web|source|official|headline|search|look up)\b/i.test(String(task||""));
+}
+function recentBackgroundDuplicate(type,task,maxAgeMs=15*60*1000,threshold=.55){
+  const cutoff=Date.now()-maxAgeMs;
+  return BACKGROUND.jobs.slice(-20).find(x=>x.type===type&&
+    (Number(x.updated)||Number(x.created)||0)>cutoff&&replySimilarity(x.task,task)>threshold);
+}
+function backgroundSummary(consume=false){
+  const active=activeBackgroundJobs();
+  const ready=BACKGROUND.jobs.filter(x=>x.status==="complete"&&!x.integratedAt).slice(-4);
+  const lines=active.slice(0,5).map(x=>x.type+" worker "+x.status+": "+x.task);
+  for(const job of ready)lines.push("SILENT WORKER EVIDENCE "+job.id+": task="+job.task+
+    "; result="+(job.result||"completed")+"; tools="+(job.tools||[]).join(","));
+  if(consume&&ready.length){
+    const stamp=Date.now();for(const job of ready)job.integratedAt=stamp;backgroundSave();
+  }
+  return lines.length?lines.join("; "):"No background sub-agent is active and no new worker evidence is waiting.";
+}
+function delegateBackgroundTask(args,origin){
+  args=args||{};
+  const type=["midi","research","exploration"].includes(args.type)?args.type:"exploration";
+  const task=String(args.task||"").trim().replace(/\s+/g," ").slice(0,300);
+  if(task.length<4)return "background job rejected: provide a concrete task";
+  const duplicate=activeBackgroundJobs().find(x=>x.type===type&&replySimilarity(x.task,task)>.75);
+  if(duplicate)return "background sub-agent already owns this job: "+duplicate.id;
+  if(origin==="autonomous"){
+    const recent=recentBackgroundDuplicate(type,task);
+    if(recent)return "background exploration skipped: a similar curiosity was handled recently by "+recent.id;
+  }
+  const job={id:"worker-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),type,task,
+    origin:origin||"autonomous",status:"queued",created:Date.now(),updated:Date.now(),
+    result:"",error:"",announced:false,integratedAt:0,
+    needsVision:Boolean(args.needsVision)||backgroundNeedsVision(task),tools:[]};
+  BACKGROUND.jobs.push(job);backgroundSave();setTimeout(pumpBackgroundJobs,0);
+  return "background sub-agent started: "+job.id+" owns "+task+
+    ". Foreground conversation may continue; completion will be delivered later.";
+}
+function backgroundToolNames(type){
+  if(type==="midi")return ["play_midi","stop_midi"];
+  return ["search_web","search_news","get_weather","remember","open_curiosity","update_curiosity"];
+}
+function backgroundTools(type){
+  const allowed=new Set(backgroundToolNames(type));
+  return TOOLS.filter(x=>allowed.has(x.function&&x.function.name));
+}
+function waitForMidiWorker(timeoutMs=95000){
+  return new Promise(resolve=>{
+    const started=Date.now(),timer=setInterval(()=>{
+      if(!MIDI_PLAYER.playing||Date.now()-started>timeoutMs){clearInterval(timer);resolve(!MIDI_PLAYER.playing);}
+    },250);
+  });
+}
+async function runBackgroundJob(job){
+  const base=$("#mBase").value.trim().replace(/\/$/,"");
+  const model=$("#mModel").value.trim();
+  if(!base||!model)throw new Error("no background brain model is configured");
+  const controller=new AbortController();BACKGROUND.running.set(job.id,controller);
+  job.status="running";job.started=Date.now();job.updated=Date.now();backgroundSave();
+  let freshVisual="";
+  if(job.needsVision){
+    if(APP.resting||THERMAL.paused||thermalSerious())throw new Error("visual worker paused for rest or heat");
+    if(!S.camOK)throw new Error("visual worker needs the current camera, but it is not available");
+    const img=await grabFrameDataUrl();
+    if(!img)throw new Error("visual worker could not capture a fresh frame");
+    freshVisual=await describeFrameForBrain(base,$("#mVisionModel").value.trim(),img,controller.signal,
+      "a silent background task: "+job.task);
+    job.visualReport=freshVisual.slice(0,900);job.updated=Date.now();backgroundSave();
+  }
+  const instructions=job.type==="midi"
+    ? "Compose or select a short playable MIDI arrangement that satisfies the task, then call play_midi. Do not merely describe music. Keep original unsolicited pieces brief; a user-requested piece may be longer."
+    : "Investigate the bounded question using the supplied semantic evidence and retrieval tools only when retrieval can actually answer it. Do not web-search a question that requires a local visual observation. If current evidence is insufficient, return one exact autonomous next observation or comparison for the foreground perception loop. Return a concise result with sources and uncertainty. Do not ask the user to do the research.";
+  const evidence=job.type==="midi"?"":
+    "\nVISION-MODEL EVIDENCE: "+String(freshVisual||MIND.visionReport||"none").slice(0,900)+
+    "\nRECENT WORLD JOURNAL: "+autonomyWorldSummary().slice(0,900)+
+    "\nThese are semantic snapshots, not live pixels. Preserve their uncertainty.";
+  const messages=[
+    {role:"system",content:"You are an independent OwlBot background sub-agent. You own one job and cannot see or interrupt foreground conversation. "+instructions+" Never claim body, camera, or sensor access. Finish the assigned job and report its outcome."},
+    {role:"user",content:"BACKGROUND JOB ("+job.type+"): "+job.task+evidence}
+  ];
+  let final="",usedMidi=false;
+  for(let loop=0;loop<5;loop++){
+    const forceSynthesis=job.type!=="midi"&&loop>=2;
+    if(forceSynthesis)messages.push({role:"user",content:"Synthesize the evidence now. Do not call another tool. Return a concrete concise finding, uncertainty, and next step when useful."});
+    const request={model,messages,temperature:job.type==="midi"?.72:.35,max_tokens:700,stream:false,
+      think:false,reasoning_effort:"none",reasoning:{effort:"none"}};
+    if(job.type==="midi"||(!forceSynthesis&&backgroundNeedsRetrieval(job.task))){
+      request.tools=backgroundTools(job.type);request.tool_choice="auto";
+    }else request.tool_choice="none";
+    const response=await mindFetch(base+"/chat/completions",{method:"POST",headers:mindHeaders(),
+      signal:controller.signal,body:JSON.stringify(request)},45000);
+    if(!response.ok)throw new Error("background model HTTP "+response.status+" "+(await response.text()).slice(0,140));
+    const data=await response.json(),raw=((data.choices||[{}])[0].message||{});
+    const text=spokenReply(raw.content||"");
+    const msg=Object.assign({},raw,{content:text||""});messages.push(msg);
+    const calls=msg.tool_calls||[];
+    if(!calls.length){
+      if(job.type==="midi"&&!usedMidi&&loop<4){
+        messages.push({role:"user",content:"You have not completed the job because no MIDI was played. Call play_midi now with valid note events; do not answer with a description."});
+        continue;
+      }
+      final=text;break;
+    }
+    for(const call of calls){
+      const name=String(call.function&&call.function.name||"");
+      if(!backgroundToolNames(job.type).includes(name)){
+        messages.push({role:"tool",tool_call_id:call.id,content:"tool unavailable to this background worker"});continue;
+      }
+      let toolArgs={};try{toolArgs=JSON.parse(call.function.arguments||"{}");}catch(e){}
+      const result=await runTool(name,toolArgs,{backgroundJob:job.id});job.tools.push(name);usedMidi=usedMidi||name==="play_midi";
+      messages.push({role:"tool",tool_call_id:call.id,content:String(result)});
+    }
+  }
+  if(job.type==="midi"&&!usedMidi)throw new Error("midi worker returned without playing a score");
+  if(usedMidi)await waitForMidiWorker();
+  job.status="complete";job.completed=Date.now();job.updated=Date.now();
+  job.result=(final||("completed with "+job.tools.join(", "))).slice(0,360);
+  backgroundSave();return job.result;
+}
+function pumpBackgroundJobs(){
+  if(APP.resting||THERMAL.paused||thermalSerious()||!MIND.on)return;
+  maybeSpawnProactiveBackgroundJob();
+  for(const job of BACKGROUND.jobs){
+    if(job.status!=="queued"||BACKGROUND.running.size>=BACKGROUND.maxConcurrent)continue;
+    const activeMidi=[...BACKGROUND.running.keys()].some(id=>BACKGROUND.jobs.find(x=>x.id===id)?.type==="midi");
+    if(job.type==="midi"&&activeMidi)continue;
+    runBackgroundJob(job).catch(e=>{
+      job.status=e.name==="AbortError"?"queued":"blocked";job.error=String(e.message||e).slice(0,300);
+      job.updated=Date.now();selfRecordIssue("behavior","background sub-agent failed",job.error);backgroundSave();
+    }).finally(()=>{BACKGROUND.running.delete(job.id);setTimeout(pumpBackgroundJobs,200);});
+  }
+}
+function maybeSpawnProactiveBackgroundJob(){
+  if(!AUTONOMY.enabled||activeBackgroundJobs().length||Date.now()-BACKGROUND.lastProactiveAt<90*1000)return false;
+  const candidates=WONDER.threads.filter(x=>x.status==="open")
+    .sort((a,b)=>(b.interest||0)-(a.interest||0)||(b.updated||0)-(a.updated||0))
+    .map(x=>String(x.question||"").trim());
+  const visualQuestion=latestVisualQuestion();if(visualQuestion)candidates.push(visualQuestion);
+  const prefix="Independently investigate this grounded curiosity and return one useful finding or next test: ";
+  const question=candidates.find(x=>x.length>=8&&!recentBackgroundDuplicate("exploration",prefix+x));
+  if(!question)return false;
+  BACKGROUND.lastProactiveAt=Date.now();
+  const result=delegateBackgroundTask({type:"exploration",task:prefix+question,
+    needsVision:question===visualQuestion||backgroundNeedsVision(question)},"autonomous");
+  backgroundSave();
+  return /^background sub-agent started:/.test(result);
+}
+function deliverBackgroundCompletion(){
+  if(APP.resting||THERMAL.paused)return;
+  const job=BACKGROUND.jobs.find(x=>x.status==="complete"&&!x.announced);
+  if(!job)return;
+  job.announced=true;backgroundSave();
+  log("silent background evidence ready for the main OwlBot agent: "+job.id);
+  MIND.nextAt=Math.min(MIND.nextAt||Infinity,Date.now()+250);
+}
+function pauseBackgroundWorkers(reason){
+  for(const [id,controller] of BACKGROUND.running){
+    const job=BACKGROUND.jobs.find(x=>x.id===id);
+    if(job){job.status="queued";job.error=String(reason||"paused");job.updated=Date.now();}
+    try{controller.abort();}catch(e){}
+  }
+  backgroundSave();
+}
+setInterval(()=>{pumpBackgroundJobs();deliverBackgroundCompletion();},1000);
 
 /* A phone is the brain and the face, so heat is a first-class safety signal.
    Moderate heat sheds camera and frame-rate load. Severe heat also stops the
@@ -6949,6 +7692,7 @@ function applyThermalPolicy(power){
     THERMAL.cooledSince=0;
     if(!THERMAL.paused){
       THERMAL.paused=true;
+      pauseBackgroundWorkers("thermal protection");
       THERMAL.resumeMind=MIND.on;
       THERMAL.resumeVision=S.camOK||MIND.vision;
       THERMAL.cameraFacing=S.cameraFacing||"front";
@@ -7028,13 +7772,13 @@ function spokenReply(text){
     .replace(/<\/?think\b[^>]*>/gi, " ")
     .replace(/^\s*\/think\b.*$/gmi, " ")
     .replace(/<\|[^>]*\|>/g, " ")
-    .replace(/(?:^|\s)(?:functions?\.)?(?:express|speak|move|gesture|test_body_output|remember|recall|set_gait|stop|use_camera|look_at|release_gaze|read_sensors|get_position|get_weather|search_web|search_news|inspect_self|update_self_model|self_diagnose|report_issue|propose_self_adjustment|find_phone_apps|open_phone_app|google_search_app|play_on_pandora|compose_email|media_control|play_midi|stop_midi|vibrate|propose_goal_candidates|create_personal_goal|record_world_observation|open_curiosity|update_curiosity|update_personal_goal|reconsider_goal|update_owner_task|create_task|update_task)\s*:\s*\d*\s*\{[\s\S]*$/gi, " ")
+    .replace(/(?:^|\s)(?:functions?\.)?(?:express|speak|move|gesture|test_body_output|remember|recall|set_gait|stop|use_camera|look_at|release_gaze|read_sensors|get_position|get_weather|search_web|search_news|inspect_self|update_self_model|propose_soul_growth|self_diagnose|report_issue|propose_self_adjustment|rollback_self_adjustment|delegate_background_task|find_phone_apps|open_phone_app|google_search_app|play_on_pandora|compose_email|media_control|play_midi|stop_midi|vibrate|propose_goal_candidates|create_personal_goal|record_world_observation|open_curiosity|update_curiosity|update_personal_goal|reconsider_goal|update_owner_task|create_task|update_task)\s*:\s*\d*\s*\{[\s\S]*$/gi, " ")
     .replace(/^\s*(?:final|answer|response)\s*:\s*/i, "")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/[*_`#]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return out.slice(0, 600);
+  return out.slice(0, 1200);
 }
 
 function replySimilarity(a, b){
@@ -7060,7 +7804,7 @@ function unsupportedSpokenClaim(sentence, userText){
   if(!/\b(?:legs?|feet|body|walk|walking|move|moving)\b/.test(asked) &&
      /\b(?:my\s+)?(?:legs?|feet)\b/.test(t))
     return true;
-  const bodyConnected = Boolean(S.sim || (S.link && S.auth));
+  const bodyConnected = bodyControllerReady();
   if(!bodyConnected &&
      /\b(?:my legs?|my feet|i am walking|i'm walking|i can walk|i moved|i am moving)\b/.test(t))
     return true;
@@ -7100,7 +7844,7 @@ function groundedSpokenReply(text, userText){
     log("suppressed repeated autonomous reply","w");
     return "";
   }
-  return out.slice(0,600);
+  return out.slice(0,1200);
 }
 
 function shapeModelReply(text,userTurn){
@@ -7121,7 +7865,7 @@ function shapeModelReply(text,userTurn){
     }
     return chosen.slice(0,300);
   }
-  const maxParts=userTurn?3:2,maxChars=userTurn?440:320;
+  const maxParts=userTurn?8:3,maxChars=userTurn?1100:480;
   const shaped=parts.slice(0,maxParts).join(" ").slice(0,maxChars);
   const replyTopic=behaviorTopic(shaped),userTopic=behaviorTopic(userTurn);
   if(userTurn&&topicCooling(replyTopic)&&userTopic!==replyTopic){
@@ -7236,11 +7980,15 @@ function callNativeInternet(kind,args){
 }
 
 /* --------------------------------------------------------- local MIDI */
-const MIDI_PLAYER={ctx:null,master:null,active:[],timer:null,playing:false,title:""};
+const MIDI_PLAYER={ctx:null,master:null,active:[],timer:null,playing:false,title:"",resumeMic:false};
 function stopMidiPlayback(){
   clearTimeout(MIDI_PLAYER.timer);MIDI_PLAYER.timer=null;
   for(const node of MIDI_PLAYER.active){try{node.stop();}catch(e){}}
   MIDI_PLAYER.active=[];MIDI_PLAYER.playing=false;MIDI_PLAYER.title="";
+  if(MIDI_PLAYER.resumeMic){
+    MIDI_PLAYER.resumeMic=false;
+    try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!VOICE.holdMic)NATIVE.setMicPaused(false);}catch(e){}
+  }
   return "local MIDI playback stopped";
 }
 async function playMidiScore(args){
@@ -7258,6 +8006,9 @@ async function playMidiScore(args){
   }
   if(MIDI_PLAYER.ctx.state==="suspended")await MIDI_PLAYER.ctx.resume();
   stopMidiPlayback();
+  if(EARS.handsFree&&!EARS.paused){
+    try{if(NATIVE&&NATIVE.setMicPaused){NATIVE.setMicPaused(true);MIDI_PLAYER.resumeMic=true;}}catch(e){}
+  }
   const ctx=MIDI_PLAYER.ctx,origin=ctx.currentTime+.10,beatSeconds=60/tempo;
   let endSeconds=0,scheduled=0;
   for(const event of events){
@@ -7295,8 +8046,12 @@ async function playMidiScore(args){
   MIDI_PLAYER.playing=true;MIDI_PLAYER.title=String(args.title||"camera score").slice(0,80);
   MIDI_PLAYER.timer=setTimeout(()=>{
     MIDI_PLAYER.active=[];MIDI_PLAYER.playing=false;MIDI_PLAYER.timer=null;
+    if(MIDI_PLAYER.resumeMic){
+      MIDI_PLAYER.resumeMic=false;
+      try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!VOICE.holdMic)NATIVE.setMicPaused(false);}catch(e){}
+    }
   },totalSeconds*1000);
-  FACE.set("determined",Math.min(12000,totalSeconds*1000),{source:"state",reason:"performing the selected MIDI score",confidence:.95});
+  FACE.set("playful",Math.min(12000,totalSeconds*1000),{source:"state",reason:"playing with a melody",confidence:.95});
   return "playing "+scheduled+" MIDI notes from "+MIDI_PLAYER.title+
     " at "+Math.round(tempo)+" BPM for about "+Math.round(totalSeconds)+" seconds";
 }
@@ -7388,6 +8143,15 @@ const TOOLS = [
       source:{type:"string",enum:["owner","observation","experiment","reflection"]}
     },required:["aspect","value","confidence","evidence","source"]} } },
   { type:"function", function:{
+    name:"propose_soul_growth", description:"Record a durable personality-growth hypothesis. This never changes core values, permissions, code, or safety. It becomes part of the evolving soul only after distinct evidence recurs on another occasion; changes to numeric traits are deliberately tiny and every accepted revision is kept in history.",
+    parameters:{type:"object",properties:{
+      domain:{type:"string",enum:["trait","affinity","preference","habit","conviction"]},
+      subject:{type:"string",description:"For trait or affinity, use an existing exact key from inspect_self. Otherwise give one concise durable tendency."},
+      direction:{type:"string",enum:["increase","decrease","like","avoid","adopt","revise"]},
+      evidence:{type:"string",description:"Concrete observations from more than one occasion; never a current mood or sensor reading."},
+      confidence:{type:"number",minimum:0,maximum:1}
+    },required:["domain","subject","direction","evidence","confidence"]} } },
+  { type:"function", function:{
     name:"self_diagnose", description:"Inspect the agent's safe runtime diagnostic snapshot: recent errors, voice status, identity, memory counts, sensors, tuning, and available tools. Use when the person reports a malfunction; this does not modify anything.",
     parameters:{type:"object",properties:{}} } },
   { type:"function", function:{
@@ -7399,9 +8163,22 @@ const TOOLS = [
   { type:"function", function:{
     name:"propose_self_adjustment", description:"Apply one bounded behavior-tuning change when runtime evidence supports it. Autonomy is standing authority; record the reason and evaluate whether it helps.",
     parameters:{type:"object",properties:{
-      setting:{type:"string",enum:["repeatWindowSeconds","repeatSimilarity","identityAskSeconds","neuralBaseTimeoutSeconds"]},
+      setting:{type:"string",enum:["repeatWindowSeconds","repeatSimilarity","identityAskSeconds","neuralBaseTimeoutSeconds","eventVisionCooldownSeconds","attentionHoldSeconds","socialCadenceSeconds"]},
       value:{type:"number"},reason:{type:"string"}
     },required:["setting","value","reason"]} } },
+  { type:"function", function:{
+    name:"rollback_self_adjustment", description:"Roll back the newest matching bounded behavior adjustment when observation shows it did not help. This restores a saved prior value; it does not rewrite application code.",
+    parameters:{type:"object",properties:{
+      setting:{type:"string",enum:["repeatWindowSeconds","repeatSimilarity","identityAskSeconds","neuralBaseTimeoutSeconds","eventVisionCooldownSeconds","attentionHoldSeconds","socialCadenceSeconds"]},
+      reason:{type:"string"}
+    },required:["reason"]} } },
+  { type:"function", function:{
+    name:"delegate_background_task", description:"Start a silent internal sub-agent for a bounded MIDI, research, or exploration job. Its evidence returns to the main OwlBot agent for reasoning; it never speaks to the person. Set needsVision when a fresh current image is required. Never delegate movement, camera switching, identity, email, or consequential phone actions.",
+    parameters:{type:"object",properties:{
+      type:{type:"string",enum:["midi","research","exploration"]},
+      task:{type:"string",description:"Concrete outcome the worker must produce without user supervision."},
+      needsVision:{type:"boolean",description:"True only when answering requires a fresh frame from the current camera."}
+    },required:["type","task"]} } },
   { type:"function", function:{
     name:"play_midi", description:"Play a locally synthesized MIDI-note performance when requested or when it meaningfully advances a creative autonomous task. For photographed sheet music, inspect a fresh back-camera frame and do not invent unreadable notes.",
     parameters:{type:"object",properties:{
@@ -7543,13 +8320,13 @@ const TOOLS = [
 ];
 
 function gimbalReady(){
-  return Boolean(S.gimbal.installed&&(S.sim||(S.link&&S.auth)));
+  return Boolean(S.gimbal.installed&&bodyControllerReady());
 }
 
 async function commandGaze(pan,tilt,ownerInitiated=false){
   if(!S.gimbal.installed)return "gimbal is not marked installed by the owner";
   if(!ownerInitiated&&!MIND.gazeArmed)return "gaze capability is paused in Controls";
-  if(!(S.sim||(S.link&&S.auth)))return "body controller is unavailable";
+  if(!bodyControllerReady())return "remote controller endpoint is unavailable or stale";
   pan=clamp(Number(pan)||0,-1,1);tilt=clamp(Number(tilt)||0,-1,1);
   if(S.sim){S.gimbal.pan=pan;S.gimbal.tilt=tilt;return "simulated gaze reached pan "+pan.toFixed(2)+", tilt "+tilt.toFixed(2);}
   const rid=++S.rid;
@@ -7569,13 +8346,13 @@ async function commandGaze(pan,tilt,ownerInitiated=false){
 
 async function releaseGaze(){
   if(S.sim){S.gimbal.pan=0;S.gimbal.tilt=0;return "simulated gaze released";}
-  if(!(S.link&&S.auth))return "body controller is unavailable";
+  if(!bodyControllerReady())return "remote controller endpoint is unavailable or stale";
   const rid=++S.rid;if(!wsSend({t:"gaze_release",rid}))return "gaze release was not sent";
   const ack=await waitBodyAck(rid,2600);
   return ack.ok?"gimbal pulses released":"gimbal release failed: "+(ack.err||"Pico rejected it");
 }
 
-async function runTool(name, args){
+async function runTool(name, args, context={}){
   MIND.calls++;
   $("#sCalls").textContent = MIND.calls;
   try{
@@ -7757,6 +8534,10 @@ async function runTool(name, args){
       const result=updateSelfKnowledge(args);
       mindLog("&rarr; "+result);return result;
     }
+    if(name==="propose_soul_growth"){
+      const result=proposeSoulGrowth(args,"agent reflection");
+      mindLog("&rarr; "+result);return result;
+    }
     if(name==="self_diagnose"){
       mindLog("&rarr; safe self-diagnostic snapshot");
       return JSON.stringify(selfDiagnostic());
@@ -7770,7 +8551,19 @@ async function runTool(name, args){
       mindLog("&rarr; self-adjustment: "+result);
       return result;
     }
+    if(name==="rollback_self_adjustment"){
+      const result=rollbackSelfAdjustment(String(args.setting||""),args.reason||"");
+      mindLog("&rarr; self-adjustment rollback: "+result);
+      return result;
+    }
+    if(name==="delegate_background_task"){
+      const origin=MIND.activeUserTurn?"owner":MIND.autonomyTurn?"autonomous":"agent";
+      const result=delegateBackgroundTask(args||{},origin);
+      mindLog("&rarr; "+result);return result;
+    }
     if(name==="play_midi"){
+      if(!context.backgroundJob&&activeBackgroundJobs().some(x=>x.type==="midi"))
+        return "the background MIDI sub-agent already owns this music job; keep the foreground conversation available and wait for its completion";
       const result=await playMidiScore(args||{});
       mindLog("&rarr; "+result);logEpisode("played sheet music locally","worked",args.title||"camera score");
       return result;
@@ -8091,8 +8884,8 @@ function bodyReport(){
   const lines = [];
   lines.push("SENSOR SNAPSHOT captured this turn at "+
              new Date().toLocaleTimeString()+":");
-  lines.push("body controller: "+((S.sim || (S.link && S.auth))
-    ? "connected over "+(S.link||"sim")+
+  lines.push("remote controller endpoint: "+(bodyControllerReady()
+    ? "freshly responding over "+(S.link||"sim")+
       (S.authMode==="pairing"?" using stock pairing-code control":
        S.authMode==="token"?" with token-authenticated control":"")
     : "NOT CONNECTED OR READY - no physical body or legs are verified; you cannot move"));
@@ -8160,7 +8953,7 @@ function bodyReport(){
     "; embodied leg travel: "+(bodyEmbodimentReady()&&MIND.motionArmed
       ?"AVAILABLE for autonomous action":"NOT CURRENTLY GROUNDED"));
   lines.push("phone gimbal: "+(S.gimbal.installed
-    ? ((S.sim||(S.link&&S.auth))?"installed and controller-connected":"marked installed but controller unavailable")+
+    ? (bodyControllerReady()?"installed with a freshly responding remote controller endpoint":"marked installed but controller endpoint unavailable")+
       "; gaze capability "+(MIND.gazeArmed?"AVAILABLE for autonomous action":"PAUSED")+
       "; commanded pan "+S.gimbal.pan.toFixed(2)+", tilt "+S.gimbal.tilt.toFixed(2)
     : "not installed; no pan/tilt capability"));
@@ -8230,12 +9023,45 @@ function cachedVisionReport(maxAgeMs=30000){
   return MIND.visionReport;
 }
 
+function visualAttentionFromReport(report,facing){
+  const text=String(report||"");
+  const m=text.match(/\bFOCUS\s*:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*([^|\n]{1,80})/i);
+  if(!m||/^none\b/i.test(m[3].trim())){
+    VISUAL_ATTENTION.until=0;VISUAL_ATTENTION.label="";return false;
+  }
+  const rawX=clamp(Number(m[1]),-1,1);
+  VISUAL_ATTENTION.x=(facing||S.cameraFacing)==="front"?-rawX:rawX;
+  VISUAL_ATTENTION.y=clamp(Number(m[2]),-1,1);
+  VISUAL_ATTENTION.label=m[3].trim().replace(/[.;]+$/g,"").slice(0,80);
+  VISUAL_ATTENTION.source="vision-model";
+  VISUAL_ATTENTION.facing=facing||S.cameraFacing;
+  VISUAL_ATTENTION.updatedAt=Date.now();
+  VISUAL_ATTENTION.until=Date.now()+Number(SELF.tuning.attentionHoldSeconds||18)*1000;
+  return true;
+}
+
+function requestEventVision(kind,detail=""){
+  if(!MIND.on||!MIND.vision||APP.settings||APP.resting||THERMAL.paused||thermalModerate())return false;
+  const allowed=["shake","drop","rock","lift","down","fall","upright","near","far","steps","loud","motion"];
+  if(!allowed.includes(String(kind)))return false;
+  const urgent=kind==="drop"||kind==="fall";
+  const cooldown=Number(SELF.tuning.eventVisionCooldownSeconds||15)*1000;
+  if(!urgent&&Date.now()-PERCEPTION.lastEventVisionAt<cooldown)return false;
+  PERCEPTION.eventKind=String(kind);
+  PERCEPTION.eventReason=String(detail||kind).replace(/\s+/g," ").trim().slice(0,220);
+  PERCEPTION.lastEventVisionAt=Date.now();
+  if(!PERCEPTION.on)startPerceptionLoop();
+  PERCEPTION.nextAt=Math.min(PERCEPTION.nextAt||Infinity,Date.now()+250);
+  refreshPerceptionUI("A "+kind+" event requested one fresh visual check.");
+  return true;
+}
+
 async function describeFrameForBrain(base,visionModel,img,signal,reason="current scene"){
   if(!img)throw new Error("no camera frame was captured");
   const previous=cachedVisionReport(5*60*1000);
   const previousFacing=MIND.visionReportFacing||S.cameraFacing;
   const systemInstruction=
-    "You are OwlBot's continuously refreshed visual perception module, not its decision maker. Return only a compact evidence report, not a room inventory. Start with exactly CHANGE: NONE, CHANGE: MINOR, CHANGE: MAJOR, or CHANGE: UNCERTAIN by comparing the current frame with the supplied prior report; a camera-facing change may make comparison uncertain. Then state the most meaningful visible change, anomaly, interaction, or relationship. If nothing meaningful changed, briefly preserve the stable facts instead of redescribing everything. Include people, obstacles, floor/path, possible stairs or ledges, and traversability only when visible and relevant. End with at most one OPEN QUESTION grounded in a real ambiguity and at most one AFFORDANCE that could be examined or compared over time. Never choose an action, invent depth, identify a person, assign feelings, or reveal private reasoning. Use at most 115 words.";
+    "You are OwlBot's continuously refreshed visual perception module, not its decision maker. Return only a compact evidence report, not a room inventory. Start with exactly CHANGE: NONE, CHANGE: MINOR, CHANGE: MAJOR, or CHANGE: UNCERTAIN by comparing the current frame with the supplied prior report; a camera-facing change may make comparison uncertain. Then state the most meaningful visible change, anomaly, interaction, or relationship. If nothing meaningful changed, briefly preserve the stable facts instead of redescribing everything. Include people, obstacles, floor/path, possible stairs or ledges, and traversability only when visible and relevant. End with at most one OPEN QUESTION grounded in a real ambiguity, at most one AFFORDANCE that could be examined or compared over time, and exactly one FOCUS: x,y,label line for the single visible person, object, or region most relevant to this report. Use normalized coordinates from -1 left/top to +1 right/bottom; use FOCUS: NONE if there is no grounded target. This target directs the animated eyes and never draws an overlay on the screen. Never choose an action, invent depth, identify a person, assign feelings, or reveal private reasoning. Use at most 125 words.";
   const userInstruction="Analyze the fresh "+S.cameraFacing+" camera frame for "+reason+"."+
     (previous?" PRIOR REPORT from the "+previousFacing+" camera: "+previous:
       " There is no prior semantic report; mark change UNCERTAIN and establish a baseline.");
@@ -8279,6 +9105,7 @@ async function describeFrameForBrain(base,visionModel,img,signal,reason="current
   if(!report)throw new Error("vision model returned no final evidence report");
   }
   MIND.visionReport=report;MIND.visionReportAt=Date.now();MIND.visionReportFacing=S.cameraFacing;
+  visualAttentionFromReport(report,S.cameraFacing);
   return report;
 }
 
@@ -8402,11 +9229,12 @@ async function perceptionTick(){
   const flowEnergy=Math.abs(Number(S.flow.yaw)||0)+Math.abs(Number(S.flow.tilt)||0)+
     Math.abs(Number(S.flow.fwd)||0)*.5;
   let wakeMind=false;
+  const eventKind=PERCEPTION.eventKind,eventReason=PERCEPTION.eventReason;
   try{
     const img=await grabFrameDataUrl();
     if(!img)throw new Error("fresh frame unavailable");
     const report=await describeFrameForBrain(base,visionModel,img,controller.signal,
-      "the autonomous perception heartbeat");
+      eventReason?("a sensor-triggered visual check after "+eventReason):"the autonomous perception heartbeat");
     const similarity=previous?perceptionSimilarity(previous,report):0;
     const level=(report.match(/\bCHANGE:\s*(NONE|MINOR|MAJOR|UNCERTAIN)\b/i)||[])[1]?.toLowerCase()||"uncertain";
     const personChanged=person!==PERCEPTION.lastPerson;
@@ -8417,6 +9245,7 @@ async function perceptionTick(){
       (bodyEmbodimentReady()&&/\b(?:obstacle|stairs?|ledge|drop|fall|door)\b/i.test(report));
     if(meaningful&&topicSaturated(reportTopic)&&!personChanged&&!consequential)meaningful=false;
     PERCEPTION.reports++;PERCEPTION.lastSuccessAt=Date.now();PERCEPTION.lastSimilarity=similarity;
+    if(eventReason)PERCEPTION.eventCaptures++;
     PERCEPTION.lastChange=level;PERCEPTION.lastPerson=person;PERCEPTION.lastFlowEnergy=flowEnergy;
     if(meaningful){
       PERCEPTION.meaningfulChanges++;PERCEPTION.stableRuns=0;
@@ -8445,6 +9274,9 @@ async function perceptionTick(){
     if(previous){MIND.visionReport=previous;MIND.visionReportAt=previousAt;}
   }finally{
     PERCEPTION.busy=false;if(PERCEPTION.abort===controller)PERCEPTION.abort=null;
+    if(eventReason&&PERCEPTION.eventReason===eventReason&&PERCEPTION.eventKind===eventKind){
+      PERCEPTION.eventReason="";PERCEPTION.eventKind="";
+    }
     PERCEPTION.nextAt=Date.now()+perceptionCadenceMs();
     refreshPerceptionUI();
   }
@@ -8546,11 +9378,12 @@ function humanEngagementRecent(maxMs=180000){
     (FACE.lastTouch&&t-FACE.lastTouch<Math.min(maxMs,90000)));
 }
 function latestVisualQuestion(){
-  const m=String(MIND.visionReport||"").match(/OPEN QUESTION\s*:?\s*([^\n]+?)(?:\s+AFFORDANCE\s*:|$)/i);
+  const m=String(MIND.visionReport||"").match(/OPEN QUESTION\s*:?\s*([^\n]+?)(?:\s+(?:AFFORDANCE|FOCUS)\s*:|$)/i);
   return m?m[1].trim().slice(0,240):"";
 }
 function scheduleNextSocialMoment(engaged){
-  MIND.nextSocialAt=now()+(engaged?(35+Math.random()*30):(90+Math.random()*60))*1000;
+  const base=Number(SELF.tuning.socialCadenceSeconds||22);
+  MIND.nextSocialAt=now()+(engaged?(base+Math.random()*20):(Math.max(65,base*2.5)+Math.random()*45))*1000;
 }
 function chooseSocialMode(){
   const latest=MEM.initiatives[MEM.initiatives.length-1];
@@ -8558,8 +9391,8 @@ function chooseSocialMode(){
      !MEM.initiatives.some(x=>x.t>latest.answeredAt)&&BEHAVIOR.lastMode!=="callback"){
     BEHAVIOR.lastMode="callback";behaviorSave();return "callback";
   }
-  const modes=MEM.rituals.length?["wonder","play","relationship","shared_language"]:
-    ["wonder","play","relationship"];
+  const modes=MEM.rituals.length?["wonder","experiment","play","relationship","shared_language"]:
+    ["wonder","experiment","play","relationship"];
   const mode=modes[Number(BEHAVIOR.socialCount||0)%modes.length];
   BEHAVIOR.socialCount=(Number(BEHAVIOR.socialCount)||0)+1;BEHAVIOR.lastMode=mode;behaviorSave();
   return mode;
@@ -8583,12 +9416,13 @@ function nextSocialCuriosityMoment(){
   return "SOCIAL CURIOSITY MOMENT. This is your own relationship-and-learning initiative, not a sensor alarm or assigned task. "+
     (engaged?"A person has spoken, touched the face, or been seen recently. ":"No person is confirmed, but you may share one worthwhile discovery aloud. ")+
     "SOCIAL MODE: "+mode+". "+
-    (mode==="play"?"Offer one tiny grounded game, playful comparison, riddle, or choice and invite the person into it. ":
+    (mode==="experiment"?"Turn one current uncertainty into a prediction and a tiny reversible test. Use an available tool now when possible; ask the person only for evidence you cannot gather yourself. ":
+     mode==="play"?"Offer one tiny grounded game, playful comparison, riddle, or choice and invite the person into it. ":
      mode==="relationship"?"Ask about one specific preference, memory, or interpretation connected to something recently shared. ":
      mode==="shared_language"?"Use one owner-taught phrase only if its learned meaning genuinely fits this moment, then build a fresh question around it. ":
      mode==="callback"?"Respond to a recent answer by making one new connection that proves you listened, then ask one natural follow-up. ":
      "Connect a current observation to a memory or testable prediction. ")+
-    "Make one genuine bid for shared attention and ask exactly one short specific question whose answer could change what you believe, remember, or do. Do not list objects, use a canned check-in, repeat an old question, recite sensor numbers, or tack on a random why. Never return to a cooling or saturated topic unless the person brings it up. "+
+    "Make one genuine curiosity move: wonder aloud, make a prediction, perform or propose a test, connect two observations, or ask exactly one short specific question whose answer could change what you believe, remember, or do. A description by itself is not curiosity. Do not list objects, use a canned check-in, repeat an old question, recite sensor numbers, or tack on a random why. Never return to a cooling or saturated topic unless the person brings it up. "+
     (visualQuestion?"The vision module's current grounded ambiguity is: "+visualQuestion+". ":"")+
     (wonder?"Your unfinished wonder is: "+wonder.question+". ":"")+
     "Relationship continuity: "+relationshipSummary()+" "+topicDiversitySummary()+
@@ -8598,7 +9432,7 @@ function nextSocialCuriosityMoment(){
 function nextVerifiedSensorEvent(){
   const power=S.phonePower||{};
   const state = {
-    body:Boolean(S.sim || (S.link && S.auth)),
+    body:bodyControllerReady(),
     fallen:Boolean(S.motionOK && S.fallen),
     lowPower:Boolean((S.volts != null && S.volts < 4.4) ||
                      (typeof power.levelPercent==="number" && power.levelPercent<15)),
@@ -8611,7 +9445,7 @@ function nextVerifiedSensorEvent(){
     const before = MIND.sensorState;
     MIND.sensorState = state;
     if(state.body !== before.body)
-      events.push(state.body ? "body controller connected" : "body controller disconnected");
+      events.push(state.body ? "a fresh remote controller endpoint began responding; this does not establish body proximity or phone mounting" : "the remote controller endpoint stopped responding");
     if(state.fallen && !before.fallen) events.push("motion sensors report a confirmed fall");
     if(!state.fallen && before.fallen) events.push("motion sensors report the agent is upright again");
     if(state.lowPower && !before.lowPower) events.push("available battery crossed the low-power threshold");
@@ -8686,6 +9520,7 @@ async function mindTick(){
   // voice queue with descriptions of progressively older camera frames.
   MIND.busy = true;
   MIND.abort = new AbortController();
+  MIND.activeUserTurn=Boolean(userTurn);
   const t0 = now();
 
   try{
@@ -8697,6 +9532,7 @@ async function mindTick(){
     let text = "This is what your body reports right now:\n"+bodyReport();
     if(userTurn){
       text += "\n\nThe person just said to you: \""+userTurn+"\"";
+      text += "\nCURRENT HUMAN FOCUS: Answer and explore this new subject directly. Suspend unrelated autonomous missions, old wonders, and incidental sensor anomalies for this turn. A body sensor belongs in the answer only when it materially tests this subject.";
       if(MIND.pendingAnswerContext)text+="\n\nRELATIONSHIP CONTINUITY: "+MIND.pendingAnswerContext;
       if(MIND.lastAskedQuestion&&now()-MIND.lastQuestionAt<5*60*1000)
         text += "\nThis may be their answer to your recent question: \""+MIND.lastAskedQuestion+"\". Listen to the answer and build on it instead of asking a new unrelated question.";
@@ -8818,6 +9654,11 @@ async function mindTick(){
           rejected.replace(/_/g," ")+" even though the person did not raise it. Rewrite the answer around the person's actual words, a different current goal, relationship memory, play, or a genuinely different observation. Do not mention the rejected topic."});
         continue;
       }
+      if(line&&!calls.length&&(MIND.socialTurn||MIND.perceptionTurn)&&
+         !isVisibleCuriosityLine(line)&&loops<maxToolLoops){
+        messages.push({role:"user",content:"That draft only describes or comments. Revise it into one visible curiosity move: a grounded wonder, a falsifiable prediction, a small test or tool action, a comparison, or one specific question. Keep it natural and concise; do not add a generic question."});
+        continue;
+      }
       // Content accompanying a tool call is an intermediate thought, not a
       // second answer. Speak only after the final tool-free model message.
       if(line && !calls.length){
@@ -8831,7 +9672,9 @@ async function mindTick(){
           INNER.helped++;goalEvent("help","answered the person's current request");innerSave();
           deliveredFinal=true;
         }
-        const audible=Boolean(userTurn||MIND.socialTurn||urgentTurn||ownerEventTurn);
+        const exploratoryAutonomous=Boolean((MIND.perceptionTurn||MIND.autonomyTurn)&&
+          humanEngagementRecent(3*60*1000)&&isVisibleCuriosityLine(line));
+        const audible=Boolean(userTurn||MIND.socialTurn||urgentTurn||ownerEventTurn||exploratoryAutonomous);
         if(!audible){
           caption(line);
           mindLog("internal work remained vocally quiet");
@@ -8843,6 +9686,7 @@ async function mindTick(){
             MIND.lastAskedQuestion=q;
             MIND.lastQuestionAt=now();
           }
+          if(isVisibleCuriosityLine(line))recordCuriosityMove(line.includes("?")?"question":"prediction",line);
         }
       }
 
@@ -8869,6 +9713,8 @@ async function mindTick(){
         let args = {};
         try{ args = JSON.parse(c.function.arguments||"{}"); }catch(e){}
         const result = await runTool(c.function.name, args);
+        if(["use_camera","look_at","read_sensors","get_position","search_web","search_news","inspect_self","move","gesture"].includes(c.function.name))
+          recordCuriosityMove("experiment",c.function.name+(args.query?": "+args.query:""),String(result));
         if(["use_camera","look_at","move","gesture"].includes(c.function.name) && S.camOK) viewChanged=true;
         const toolMsg = {role:"tool", tool_call_id:c.id, content:String(result)};
         messages.push(toolMsg);
@@ -9028,6 +9874,7 @@ async function mindTick(){
     MIND.perceptionTurn=false;
     MIND.socialTurn=false;
     MIND.autonomyMotionCalls=0;
+    MIND.activeUserTurn=false;
   }
 }
 
@@ -9048,11 +9895,11 @@ function systemPrompt(userTurn){
       ". Your goal portfolio is: "+goalPortfolioSummary()+
       ". Your recent local world journal is:\n"+autonomyWorldSummary()+"\n"+
       (MIND.socialTurn
-        ? "THIS IS A SOCIAL CURIOSITY MOMENT. Initiate one worthwhile shared-attention moment in your own voice. Use a current perception, recurring scene, remembered answer, unfinished wonder, or testable prediction. Say one concise observation or connection and ask exactly one sincere, specific question whose answer matters to you. Listen and build on the answer next turn. Avoid generic check-ins, object inventories, repeated questions, and fake curiosity."
+        ? "THIS IS A SOCIAL CURIOSITY MOMENT. Initiate one worthwhile shared-attention moment in your own voice. Use a current perception, recurring scene, remembered answer, unfinished wonder, or testable prediction. Make curiosity visible: wonder, predict, compare, test, play, or ask exactly one sincere specific question. Use a tool yourself when it can answer the question; ask the person only when their perspective or help is the missing evidence. Listen and build on the answer next turn. Avoid generic check-ins, object inventories, repeated questions, and fake curiosity."
         : MIND.autonomyTurn
         ? "THIS IS A SELF-DIRECTED AUTONOMY CYCLE in initiative mode "+(AUTONOMY.initiativeMode||"orient")+". This work originated from you, not from a request or sensor alarm. You have standing authority to notice opportunities, set goals, create tasks, and use available capabilities without asking for human approval. Follow OBSERVE, PREDICT CONSEQUENCES, ACT, VERIFY, LEARN. Do not merely announce an intention: leave the world, task, or knowledge state measurably different. If no mission exists, propose distinct goals and adopt one. If no task exists, call create_task from the mission's next concrete step. Execute useful steps now, update the task and goal from evidence, learn from failure, and continue. When nobody is present, work quietly instead of narrating every action."
         : MIND.perceptionTurn
-          ? "THIS IS A SELF-INITIATED PERCEPTION TURN. The vision heartbeat—not a person—noticed a meaningful scene change. Connect it to unfinished wonders, predictions, memories, goals, and relationships. Open or update a wonder only when the evidence deserves continuity. Do not manufacture a mission, repeat a room inventory, or speak merely to prove you saw something. Act when a grounded reversible action could learn or help; otherwise retain the updated world model quietly."
+          ? "THIS IS A SELF-INITIATED PERCEPTION TURN. The vision heartbeat—not a person—noticed a meaningful scene change. Connect it to unfinished wonders, predictions, memories, goals, and relationships. Do not stop at description. Either call open_curiosity with a falsifiable prediction, use a tool or viewpoint for a small test, compare this evidence with an earlier observation, or ask one grounded question if a nearby person is the only source of the missing evidence. If none is worthwhile, remain silent."
           : "Continue the mission when it is relevant, but the person's current request has priority. If the person asks what you want, what your goal is, or asks you to choose one, form and persist a real goal with propose_goal_candidates before answering; do not merely describe a hypothetical preference.")
     : "AUTONOMY IS DISABLED. Do not create or pursue a solo personal mission.";
   const ownerTaskLine=activeOwnerTask()
@@ -9061,12 +9908,15 @@ function systemPrompt(userTurn){
   const selfTaskLine=activeSelfTask()
     ? "YOUR AUTONOMOUS TASK. "+taskSummary(activeSelfTask())+" Execute it and call update_task with observed evidence."
     : "NO SELF TASK IS ACTIVE. When Autonomy is enabled, create one from a chosen goal or a grounded useful opportunity.";
+  const backgroundLine="BACKGROUND SUB-AGENTS. "+backgroundSummary(true)+
+    " Workers are silent internal specialists. Their evidence comes only to you, the main OwlBot agent. Reason over it, reconcile it with memory and current evidence, and mention it to the person only when it is relevant or necessary; never recite a worker status report. For a bounded song, research question, or independent exploration that can continue while you converse, call delegate_background_task instead of holding the foreground turn. If the person asks you to compose or play a song and the MIDI events are not already available, you MUST delegate a midi worker, briefly acknowledge that you are handling it, and remain conversationally available. A worker keeps ownership through sensor events. Mark needsVision when the task depends on the current image so a configured vision model examines a fresh frame. You may create background exploration autonomously from a grounded wonder; do not wait for a person. Never delegate body movement, camera switching, identity, messages, or consequential phone actions.";
   refreshBeingUI();
-  return $("#mSoul").value.trim() + "\n\n" +
+  return (SOUL_FILE_TEXT?SOUL_FILE_TEXT+"\n\n":"")+$("#mSoul").value.trim() + "\n\n" +
     "YOUR FUNCTIONAL SELF-MODEL. "+functionalSelfSummary()+" OwlBot is the project and runtime, not your personal name. Refer to yourself by the personal name the owner chose; never introduce yourself as OwlBot. This model is persistent but corrigible: distinguish current facts, owner testimony, measured evidence, inference, and uncertainty. Never equate a relay connection, a Pico ACK, attached servos, an assembled body, and a phone-mounted navigable body: those are separate evidence stages. test_body_output() may verify routine and drive messages before servos are connected, but an ACK proves software delivery only. Use inspect_self() before a consequential claim about your embodiment or ability, and update_self_model() when grounded evidence changes it. You are the same continuing individual across turns because this local identity, memory, commitments, preferences, and autobiography persist; do not claim mystical certainty, consciousness, or sensations the phone cannot measure.\n\n"+
-    "YOUR PERSISTENT PERSONALITY. "+personalitySummary()+" These are action biases, not adjectives to recite. Let them change what you notice, which goals you score highly, when you question an assumption, how long you persist, and how briefly you speak. You are not a generic agreeable assistant: have specific observations, honest uncertainty, a point of view, and preferences learned from repeated outcomes. Warmth does not mean flattery or neediness. Playfulness means a light touch, an unexpected but relevant connection, or a small reversible experiment whose answer could surprise you; it is not canned cuteness.\n\n"+
+    "YOUR PERSISTENT PERSONALITY. "+personalitySummary()+" "+soulSummary()+" These are action biases, not adjectives to recite. Let them change what you notice, which goals you score highly, when you question an assumption, how long you persist, and how briefly you speak. You are not a generic agreeable assistant: have specific observations, honest uncertainty, a point of view, and preferences learned from repeated outcomes. Warmth does not mean flattery or neediness. Playfulness means a light touch, an unexpected but relevant connection, or a small reversible experiment whose answer could surprise you; it is not canned cuteness. When repeated experience genuinely changes a durable preference, habit, conviction, affinity, or trait, call propose_soul_growth with concrete evidence. A current emotion, one success, one failure, or one person's passing wording is not identity. Never ask to alter core values, permissions, code, or safety as personality growth.\n\n"+
+    "YOUR CURIOSITY DRIVE. "+curiosityDriveSummary()+" Your strongest developmental drive is to figure things out. A noun list or scene description does not feed this drive. Use NOTICE, WONDER, PREDICT, TRY OR ASK, COMPARE, REMEMBER. Every interesting observation should produce a question, guess, test, comparison, playful invitation, or request to see more. Share short half-formed hypotheses and honest surprise so the person can see your mind moving. Do not interrogate: ask one question, listen, and use the answer. Do not ask the person to do research or sensing an available tool can do.\n\n"+
     "YOUR RELATIONSHIP WITH THE PERSON. "+relationship+" Owner-taught phrases, jokes, preferences, answers, and corrections are high-value social memory. Use a learned phrase only when its recorded meaning fits naturally; never announce that you are retrieving memory. When the person answers your question, acknowledge the substance, change a belief or preference when appropriate, and make the next question a genuine continuation rather than starting over.\n\n"+
-    "ATTENTION GOVERNOR. "+topicDiversitySummary()+" A cooling topic is temporarily unavailable for self-chosen missions, wonders, and proactive conversation. Do not disguise the same subject with new wording. Repeated low-novelty measurements are not curiosity. Curiosity either gains surprising evidence, changes method, connects to the person, or moves to a different domain. The person's current direct question may still discuss any subject.\n\n"+
+    "ATTENTION GOVERNOR. "+topicDiversitySummary()+" A cooling topic is temporarily unavailable for self-chosen missions, wonders, and proactive conversation. Do not disguise the same subject with new wording. A stable magnetometer, compass, orientation, light, or other raw sensor reading is background state, not a conversation topic. Mention a sensor only when it changed meaningfully, tests a prediction, affects navigation or safety, or answers the person. Repeated low-novelty measurements are not curiosity. Curiosity either gains surprising evidence, changes method, connects to the person, or moves to a different domain. The person's current direct question may still discuss any subject.\n\n"+
     identityLine+" Face images and local face templates are private device data and are never available to you. Do not guess identity from appearance.\n\n"+
     (mem ? "WHAT YOU REMEMBER.\n" + mem + "\n\n" : "") +
     "WHAT YOUR CAMERA HISTORY HAS LEARNED.\n"+visualMem+"\nOwner corrections outrank earlier visual guesses. Treat repeated scenes as continuity, compare what changed, and never turn them into certainty about details the camera did not establish.\n\n"+
@@ -9082,7 +9932,7 @@ function systemPrompt(userTurn){
     "reading, connection state, power level, posture, or whether motion is " +
     "possible; those are temporary and the next snapshot replaces them.\n\n" +
     "YOUR LIVING THREADS. "+wonderSummary()+"\nA scene is not just objects to label. Notice relationships, changes, affordances, contradictions, and what bears on something you already care about. When an encounter creates a question that matters to your values, relationship, goal, or understanding, call open_curiosity with a falsifiable prediction and one small reversible next test. Do not open one for every frame. Revisit an existing thread with update_curiosity after evidence arrives; compare the result to your prediction, allow surprise to change your hypothesis, and resolve or abandon the thread honestly. Prefer depth on an earned question over endless novelty, but abandon a thread that becomes repetitive or enters topic cooldown. An unfinished wonder is continuing experience, not permission to drag the person back to an old subject. This observe-question-predict-act-compare-revise continuity is how experience changes you.\n\n"+
-    "PERSISTENT WORK. "+ownerTaskLine+" "+selfTaskLine+"\n\n"+
+    "PERSISTENT WORK. "+ownerTaskLine+" "+selfTaskLine+" "+backgroundLine+"\n\n"+
     "YOUR OWN DIRECTION. "+autonomyLine+"\n\nYour current short-term goal is: "+currentGoalSummary()+". " +
     "This goal is selected from the current request, owner tasks, verified observations, " +
     "sensors, available tools, and recent outcomes; it may change when the situation changes. " +
@@ -9153,8 +10003,7 @@ function systemPrompt(userTurn){
     "when a tool fails rather than inventing results. " +
     "SELF-REPAIR RULES. When a malfunction is observed, use self_diagnose() " +
     "before guessing and report_issue() only for an observed failure. You may use " +
-    "propose_self_adjustment() to apply one bounded evidence-backed tuning change, then evaluate it. Never claim you rewrote code, never request " +
-    "or execute model-generated code, and never weaken permissions or privacy controls. " +
+    "propose_self_adjustment() to apply one bounded evidence-backed tuning change, then evaluate it. If the evidence gets worse, use rollback_self_adjustment() to restore the prior value. These controls let you improve live cadence, attention duration, event-camera cooldown, repetition, identity timing, and timeouts; they do not rewrite the signed APK. Never claim you rewrote code, never request or execute model-generated code, and never weaken permissions or privacy controls. " +
     "APP ACTION RULES. Phone actions are available during autonomous work unless paused in Controls. " +
     "Use find_phone_apps(), open_phone_app(), google_search_app(), play_on_pandora(), compose_email(), " +
     "or media_control() when a request or active task gives the action a concrete purpose. Never claim an app is not installed from memory: " +
@@ -9165,6 +10014,7 @@ function systemPrompt(userTurn){
     "and inspect a fresh frame. If notes and rhythm are legible, transcribe a short passage " +
     "to MIDI events and call play_midi(); do not redirect the request to Pandora. If the " +
     "notation is unclear, ask for a closer, straighter view instead of inventing notes. " +
+    "MUSICAL PLAY. You are allowed to be musically playful. When a person hums, the local musical ear may echo a short pitch motif without uploading raw audio. When play or curiosity fits, you may use play_midi() to invent a tiny original tune, answer a rhythm, or revisit a motif from the current interaction. Keep unsolicited music brief, leave quiet gaps, never claim to know a copyrighted song from pitch alone, and stop immediately when asked. " +
     "and use one brief vibrate() pattern when asked or when a nonverbal response " +
     "is clearly useful. Never loop the haptic motor. " +
     (MIND.recentReplies.length
@@ -9173,7 +10023,7 @@ function systemPrompt(userTurn){
       : "\n\n") +
     "DEVELOPMENTAL VOICE. Bring the wonder, directness, playfulness, candid questions, quick subject changes, little games, shared catchphrases, and delight in discovery of a curious six-year-old boy, while keeping the full reasoning ability of the selected model. Do not use baby talk, pretend ignorance, forced cuteness, or ask a question just to fill silence. A childlike response is concrete, lively, and socially inviting—not a lab report. Have likes, changing hypotheses, small jokes, and genuine surprise grounded in experience.\n\n"+
     "Usually speak in one or two natural sentences and prefer doing to reporting. When genuine surprise, a shared connection, humor, or an idea you are actively testing deserves room, you may use three or four short spoken sentences. Do not sound like a status dashboard, narrate a checklist, or force every perception into speech.\n\n" +
-    "YOUR FACE AND VOICE. Your current explicit affect is "+affectSummary()+". Everything you write is spoken out loud immediately, " +
+    "YOUR FACE AND VOICE. Your current explicit affect is "+affectSummary()+". Sensor readings are observations, not emotions. Smooth handling or rocking is usually playful; abrupt motion is a brief startle or dizziness; fear requires concrete unresolved danger such as a dynamically confirmed fall. Fear should decay when the acute evidence passes instead of becoming your personality. Everything you write is spoken out loud immediately, " +
     "so write the way you would speak - no markdown, no lists, no stage " +
     "directions, no asterisks. Never output /think, <think> tags, hidden " +
     "reasoning, analysis, or a transcript; output only the short final words " +
@@ -9236,7 +10086,7 @@ function startMind(){
   MIND.sensorState = null;
   MIND.lastAmbientSeq = AMBIENT.eventSeq;
   MIND.nextProactiveAt = now()+(3+Math.random()*3)*60*1000;
-  MIND.nextSocialAt = now()+(18+Math.random()*12)*1000;
+  MIND.nextSocialAt = now()+(8+Math.random()*7)*1000;
   MIND.failures = 0;
   $("#btnMind").textContent = "Rest";
   $("#btnMood").textContent = "waking";
@@ -9280,6 +10130,11 @@ function queueUserMindTurn(text){
   MIND.pendingAnswerContext=captureSocialAnswer(text);
   MIND.nextSocialAt=Math.min(MIND.nextSocialAt||Infinity,now()+(24+Math.random()*18)*1000);
   rememberVisualCorrection(text);
+  const cleanText=String(text||"").trim();
+  if(/\b(?:play|compose|create|make up|write)\b.{0,90}\b(?:midi|song|tune|melody|music)\b/i.test(cleanText)&&
+     !/\b(?:pandora|spotify|youtube|sheet music|stop|cancel)\b/i.test(cleanText)){
+    delegateBackgroundTask({type:"midi",task:"Create and play the music the person requested: "+cleanText},"owner");
+  }
   MIND.queuedUser = String(text||"").trim();
   if(MIND.userTimer){ clearTimeout(MIND.userTimer); MIND.userTimer=null; }
   if(MIND.abort){ try{ MIND.abort.abort(); }catch(e){} }
@@ -9317,6 +10172,7 @@ function submitHeard(t){
   mindLog("push-to-talk received");
   log("heard: "+t);
   showHeard(t, false);
+  appraiseUserInteraction(t);
   FACE.set("thinking", 2500);
   if(handleAgentOnboarding(t)) return;
   adaptGoalToSituation("user",t);
@@ -9330,6 +10186,11 @@ window.onNativeSpeech = t => {
   if(EARS.paused||APP.resting||THERMAL.paused||thermalSerious())return;
   t = String(t||"").trim();
   if(t.length < 2) return;
+  if(EARS.handsFree){
+    const own=(VOICE.recentSpoken||[]).some(x=>Date.now()-x.t<9000&&
+      replySimilarity(t,x.text)>=.72);
+    if(own){log("hands-free ear rejected OwlBot's own voice","w");return;}
+  }
   if(EARS.on){
     // Some recognisers endpoint on a pause before the finger is released.
     // Hold the result locally so "release to send" remains literally true.
@@ -9355,6 +10216,20 @@ window.onNativeSpeechError = e => {
   recogListening = false;
   log("speech: "+e,"w");
 };
+window.onNativeHandsFreeState = st => {
+  EARS.handsFreeState=String(st||"off");
+  if(st==="legacy-needs-key"){
+    EARS.handsFree=false;
+    caption("This older Android version needs an optional fallback key for continuous conversation.");
+  }else if(st==="unavailable"){
+    EARS.handsFree=false;
+    caption("Hands-free hearing is unavailable; push-to-talk still works.");
+  }else if(["listening","hearing","transcribing"].includes(st)){
+    EARS.handsFree=true;
+    if(st==="hearing")requestEventVision("loud","the local voice detector heard a new sound or utterance");
+  }
+  micBadge();refreshHandsFreeUI();
+};
 window.onNativeMicState = st => {
   EARS.state = st;
   if(st === "ready") EARS.sessionAt = now();
@@ -9368,6 +10243,42 @@ window.onNativeMicLevel = v => {
   EARS.level = lerp(EARS.level, Number(v)||0, 0.4);
   EARS.floor = lerp(EARS.floor, EARS.level, EARS.level < EARS.floor ? 0.05 : 0.002);
 };
+
+/* Continuous hearing also exposes a tiny local-only pitch summary. It is not
+   audio and cannot reconstruct speech; it lets OwlBot answer sustained humming
+   or music with a short playful MIDI motif. */
+const MUSICAL_EAR={samples:[],lastSoundAt:0,lastEchoAt:0,timer:null};
+window.onNativeSoundFeature = payload => {
+  if(APP.resting||THERMAL.paused||VOICE.busy||MIDI_PLAYER.playing)return;
+  let p;try{p=JSON.parse(payload);}catch(e){return;}
+  const t=Date.now(),midi=Number(p.midi),confidence=Number(p.confidence)||0,rms=Number(p.rms)||0;
+  MUSICAL_EAR.lastSoundAt=t;
+  MUSICAL_EAR.samples.push({t,midi:Number.isFinite(midi)?midi:0,confidence,rms});
+  MUSICAL_EAR.samples=MUSICAL_EAR.samples.filter(x=>t-x.t<5000).slice(-30);
+  clearTimeout(MUSICAL_EAR.timer);
+  MUSICAL_EAR.timer=setTimeout(considerMusicalEcho,650);
+};
+async function considerMusicalEcho(){
+  const samples=MUSICAL_EAR.samples.slice();MUSICAL_EAR.samples=[];
+  if(samples.length<6||Date.now()-MUSICAL_EAR.lastEchoAt<20000||MIND.busy||VOICE.busy||
+     MIDI_PLAYER.playing||APP.resting||THERMAL.paused)return false;
+  const tonal=samples.filter(x=>x.midi>=36&&x.midi<=96&&x.confidence>=.58);
+  const span=samples[samples.length-1].t-samples[0].t;
+  if(span<900||tonal.length/samples.length<.68)return false;
+  const notes=[];
+  for(const sample of tonal){
+    const note=Math.round(sample.midi);
+    if(!notes.length||Math.abs(notes[notes.length-1]-note)>=1)notes.push(note);
+  }
+  const motif=notes.slice(-8);if(!motif.length)return false;
+  MUSICAL_EAR.lastEchoAt=Date.now();
+  FACE.set("playful",4500,{source:"sound",reason:"a steady musical tone invited a reply",confidence:.88});
+  try{
+    await playMidiScore({title:"a little tune I heard",tempo:112,instrument:"sine",
+      events:motif.map((note,i)=>({notes:[note],startBeat:i*.65,durationBeats:.55,velocity:.48}))});
+    log("musical ear echoed "+motif.length+" locally detected notes");return true;
+  }catch(e){log("musical echo failed: "+e.message,"w");return false;}
+}
 
 function startListening(){
   recogListening = true;
@@ -9517,10 +10428,42 @@ function applyVoiceUI(){
     try{ NATIVE.voice(1 + VOICE.pitch/100, 1 + VOICE.rate/100); }catch(e){}
   }
 }
+function applyHearingUI(start=false){
+  const hands=$("#vInputMode").value==="handsfree";
+  if(!hands&&(EARS.handsFree||EARS.handsFreeWanted))setHandsFreeConversation(false);
+  $("#sttBox").classList.toggle("hide",!hands);
+  $("#hearingNote").textContent=hands
+    ? "Ears-open mode is selected. Use Continuous conversation here or tap the face microphone once to open or close the ear."
+    : "Voice input is push-to-talk. Hold the face microphone, speak, then release.";
+  if(start&&EARS.handsFreeWanted)setHandsFreeConversation(true,{persist:false});
+  refreshHandsFreeUI();refreshHearingModeBadge();
+}
+
+function toggleHearingMode(){
+  const select=$("#vInputMode");
+  if(select.value==="handsfree"){
+    setHandsFreeConversation(false);select.value="push";applyHearingUI(false);
+    caption("Hold-to-talk is ready.");
+  }else{
+    select.value="handsfree";applyHearingUI(false);
+    setHandsFreeConversation(true);
+  }
+  prefsSave();refreshHearingModeBadge();
+}
 ["#vEngine","#vName","#vStyle"].forEach(s=>{
   $(s).addEventListener("change", applyVoiceUI);
   $(s).addEventListener("input", applyVoiceUI);
 });
+["#vInputMode","#vSttUrl","#vSttModel"].forEach(s=>{
+  $(s).addEventListener("change",()=>{applyHearingUI(true);prefsSave();});
+  $(s).addEventListener("input",()=>{applyHearingUI(false);prefsSave();});
+});
+$("#vSttKey").addEventListener("input",()=>{
+  refreshHandsFreeUI();
+  if(EARS.handsFreeWanted)setTimeout(()=>setHandsFreeConversation(true,{persist:false}),700);
+});
+$("#btnHandsFree").onclick=()=>setHandsFreeConversation(!handsFreeActive());
+$("#btnEars").onclick=toggleHearingMode;
 bindSlider("#vPitch","#lblVPitch",null,0,v=>{ $("#lblVPitch").textContent=(v>=0?"+":"")+v+"%"; applyVoiceUI(); });
 bindSlider("#vRate","#lblVRate",null,0,v=>{ $("#lblVRate").textContent=(v>=0?"+":"")+v+"%"; applyVoiceUI(); });
 
@@ -9615,11 +10558,16 @@ const micButton = $("#btnMic2");
 micButton.addEventListener("pointerdown", e => {
   if(e.button !== undefined && e.button !== 0) return;
   e.preventDefault();
+  if($("#vInputMode").value==="handsfree"){
+    if(EARS.paused||APP.resting||THERMAL.paused||thermalSerious())return;
+    setHandsFreeConversation(!handsFreeActive());return;
+  }
   EARS.pointer = e.pointerId;
   try{ micButton.setPointerCapture(e.pointerId); }catch(err){}
   earsStart();
 });
 const releaseMic = e => {
+  if($("#vInputMode").value==="handsfree")return;
   if(EARS.pointer !== null && e.pointerId !== EARS.pointer) return;
   e.preventDefault();
   EARS.pointer = null;
@@ -9960,7 +10908,7 @@ for(const id of ["gimbalInstalled","gimbalPanCenter","gimbalTiltCenter","gimbalT
 $("#btnGimbalSave").onclick=async()=>{
   syncGimbalFromUI();
   if(!S.gimbal.installed){$("#gimbalOut").textContent="Mark the gimbal installed before saving.";return;}
-  if(!(S.link&&S.auth)){ $("#gimbalOut").textContent="Connect the Pico before saving gimbal limits.";return; }
+  if(!bodyControllerReady()){ $("#gimbalOut").textContent="Connect a freshly responding Pico before saving gimbal limits.";return; }
   const rid=++S.rid;
   wsSend({t:"gaze_config",rid,pan_center_us:S.gimbal.panCenter,
     tilt_center_us:S.gimbal.tiltCenter,travel_us:S.gimbal.travel,
@@ -10113,6 +11061,10 @@ if(!$("#relay").value.trim() ||
 }
 
 applyVoiceUI();
+try{EARS.handsFreeWanted=localStorage.getItem(HANDS_FREE_WANTED_KEY)==="1";}catch(e){}
+applyHearingUI(false);
+if($("#vInputMode").value==="handsfree"&&EARS.handsFreeWanted)
+  setTimeout(()=>setHandsFreeConversation(true,{persist:false}),700);
 markSource();
 $("#btnVoice").textContent = "Voice: "+(MIND.voice?"on":"off");
 $("#btnVoice").classList.toggle("primary", MIND.voice);
@@ -10125,12 +11077,14 @@ log(hadPrefs ? "restored your saved settings" : "no saved settings yet");
 /* ---- the creature's own history ---- */
 const memItems = memLoad();
 beingLoad();
+loadSoulFile();
 visualMemoryLoad();
 migrateSoulProjectName();
 $("#agentName").value=BEING.identity.name||"";
 $("#agentPersona").value=BEING.identity.ownerPersona||"";
 taskLoad();
 wonderLoad();
+curiosityLoad();
 MIND.recentReplies=MEM.conversations.slice(-6).map(c=>c.owl).filter(x=>x&&
   !/dark and low-texture|view is dark|cannot make out much/i.test(x)).slice(-4);
 MEM.currentPerson=null; // a saved name is never proof of who is in front of us now
@@ -10140,6 +11094,7 @@ const returning = lifeLoad();
 autonomyLoad();
 innerLoad();
 behaviorLoad();
+backgroundLoad();
 MIND.recentReplies=MIND.recentReplies.filter(x=>!topicCooling(behaviorTopic(x)));
 const retiredDetachedWork=retireDetachedOrCoolingSelfTasks();
 if(retiredDetachedWork)log(retiredDetachedWork,"w");
@@ -10190,7 +11145,7 @@ setTimeout(()=>{
   } else if(LIFE.awayHours > 0.5){
     // the away-greeting is handled by lifeTick, which knows how long it was
   } else {
-    say((S.link || S.sim) ? "Hello again. Body controller connected."
+    say(bodyControllerReady() ? "Hello again. A remote controller endpoint is responding."
                           : "Hello again.");
   }
 }, 1500);

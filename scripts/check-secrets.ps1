@@ -4,7 +4,8 @@ param()
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $excludedDirectories = @('.git', '.gradle', 'build', '.idea', '.cxx', 'models')
-$excludedExtensions = @('.apk', '.aab', '.jar', '.class', '.bin', '.pb', '.tflite', '.litertlm', '.onnx')
+$excludedExtensions = @('.apk', '.aab', '.jar', '.class', '.bin', '.pb', '.tflite', '.litertlm', '.onnx',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp')
 $patterns = [ordered]@{
     'private key block' = '-----BEGIN [A-Z ]*PRIVATE KEY-----'
     'GitHub token' = 'gh[opusr]_[A-Za-z0-9]{16,}'

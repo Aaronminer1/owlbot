@@ -54,15 +54,17 @@ OpenAI and Codex are credited for development assistance only. OwlBot is an inde
 
 ## What OwlBot does
 
-The current source snapshot is Android app version **4.1**. Its major systems are:
+The current source snapshot is Android app version **5.5-community** (`versionCode 48`). It carries the current OwlBot behavior while preserving the audited community edition's exclusion of the private local-model runtime and unofficial neural-voice transport. Its major systems are:
 
 - An animated, expressive face rendered in an embedded HTML/Canvas interface.
 - A priority-based contextual expression resolver covering protection, danger, listening, thinking, speaking, success, frustration, uncertainty, relief, affection, play, focus, boredom, and reasoned model appraisal. Automatic failure produces confusion/focus rather than invented anger; anger requires an explicit current model appraisal with a concrete reason.
-- Push-to-talk conversation with configurable OpenAI-compatible model endpoints.
+- Push-to-talk and optional continuous conversation with configurable OpenAI-compatible model endpoints. On Android 13 and newer, hands-free mode uses local voice-activity detection and Android's system speech recognizer without requiring a transcription API key. Partial and segmented results plus timeout recovery prevent a silent recognizer from swallowing a sentence; older Android versions can use an optional user-configured transcription provider.
 - Ollama Cloud support using an API key supplied by the individual user.
 - Local Ollama support for setups that provide an accessible LAN endpoint.
-- Persistent local conversation memory, people notes, experiences, goals, tasks, lessons, inner-life state, and self-model state.
+- Persistent local conversation memory, reinforced long-term memories, people notes, experiences, goals, tasks, lessons, inner-life state, and self-model state. Durable memories are deduplicated, reinforced, ranked for relevance and salience, and survive restarts.
+- A bundled, human-readable `SOUL.md` foundation plus versioned growth records for learned habits, convictions, affinities, proposals, and revisions.
 - Situation-aware personal goals and an experimental autonomy executive.
+- An attention governor that suppresses repetitive low-novelty sensor commentary and redirects curiosity toward useful observations, experiments, and the person.
 - Phone sensor integration: acceleration, gravity, gyroscope, orientation, light, pressure, proximity, steps, battery, thermal state, and location when permission is granted.
 - A global thermal governor that sheds camera/render/sensor load at moderate heat and stops model, body, microphone, GPS, and continuous sensors at severe heat until a sustained cooldown, with a distinct animated cooling face.
 - Camera perception, optical flow, generic person presence, and optional local facial recognition.
@@ -99,6 +101,7 @@ app/
   src/main/
     AndroidManifest.xml
     assets/growbot-brain.html       OwlBot UI, memory, goals, tools, and behavior
+    assets/SOUL.md                  Stable character foundation and growth boundaries
     java/dev/owlbot/brain/
       MainActivity.java             Android bridge, sensors, Android TTS, and phone tools
 tools/laptop-maestro-bridge/        Dry-run-first Windows-to-Maestro test controller
@@ -128,7 +131,7 @@ Local-model weights are not bundled or automatically downloaded by the community
 
 ## Thermal and physical cooling
 
-OwlBot's screen, camera, WebView, sensors, charging circuit, and radio all share a small phone enclosure. Version 4.1 reduces software load automatically, but sustained robot use can still benefit from active airflow. If adding a fan:
+OwlBot's screen, camera, WebView, sensors, charging circuit, and radio all share a small phone enclosure. Version 5.5-community reduces software load automatically, but sustained robot use can still benefit from active airflow. If adding a fan:
 
 - power it from a separate regulated supply rather than the phone battery or servo rail;
 - aim airflow across the rear frame/battery area without letting blades, screws, or conductive guards touch exposed phone electronics;
