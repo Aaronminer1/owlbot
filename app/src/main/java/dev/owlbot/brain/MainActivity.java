@@ -16,6 +16,9 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -26,6 +29,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.ParcelFileDescriptor;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.speech.RecognitionListener;
@@ -66,8 +70,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.StringReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -126,6 +134,19 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private long lastRms = 0;
     private long sessionStart = 0;
     private final Handler main = new Handler(Looper.getMainLooper());
+    private volatile boolean handsFreeEnabled = false;
+    private volatile boolean handsFreeRunning = false;
+    private volatile long handsFreeResumeAt = 0;
+    private volatile AudioRecord handsFreeRecorder;
+    private SpeechRecognizer handsFreeSpeechRecognizer;
+    private volatile boolean handsFreeTranscribing = false;
+    private ParcelFileDescriptor handsFreeAudioRead;
+    private long handsFreeTranscriptionGeneration = 0;
+    private String handsFreePartial = "";
+    private Runnable handsFreeTranscriptionTimeout;
+    private Thread handsFreeThread;
+    private String speechUrl = "https://api.groq.com/openai/v1/audio/transcriptions";
+    private String speechModel = "whisper-large-v3-turbo";
     private SensorManager sensorManager;
     private LocationManager locationManager;
     private final Object sensorLock = new Object();
@@ -418,7 +439,8 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             if (pendingSpeechListen) {
                 pendingSpeechListen = false;
                 if (granted(Manifest.permission.RECORD_AUDIO)) {
-                    startListening();
+                    if (handsFreeEnabled) startHandsFreeCapture();
+                    else startListening();
                 }
             }
             if (!hardwareSensorsPaused) {
@@ -1263,6 +1285,22 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             return true;
         }
 
+        /** Read-only identity baseline. Mutable soul growth stays in WebView
+         *  local storage; the packaged core remains inspectable and recoverable. */
+        @JavascriptInterface
+        public String readBundledSoul() {
+            try (InputStream in = getAssets().open("SOUL.md");
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                return out.toString(StandardCharsets.UTF_8.name());
+            } catch (Exception e) {
+                Log.w(TAG, "SOUL.md read failed", e);
+                return "";
+            }
+        }
+
         @JavascriptInterface
         public boolean saveSecret(String name, String value) {
             return saveSecretValue(name, value);
@@ -1341,7 +1379,32 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 if (paused) {
                     pendingSpeechListen = false;
                     stopListening();
+                    stopHandsFreeCapture();
+                } else if (handsFreeEnabled) {
+                    handsFreeResumeAt = System.currentTimeMillis() + 650;
+                    startHandsFreeCapture();
                 }
+            });
+        }
+
+        /** Keep one raw microphone stream open and detect complete utterances locally. */
+        @JavascriptInterface
+        public void setHandsFree(final boolean enabled, final String url, final String model) {
+            main.post(() -> {
+                handsFreeEnabled = enabled;
+                if (url != null && !url.trim().isEmpty()) speechUrl = url.trim();
+                if (model != null && !model.trim().isEmpty()) speechModel = model.trim();
+                if (!enabled) {
+                    stopHandsFreeCapture();
+                    toJs("onNativeHandsFreeState", "off");
+                    return;
+                }
+                if (!granted(Manifest.permission.RECORD_AUDIO)) {
+                    pendingSpeechListen = true;
+                    askForSenses(false, true);
+                    return;
+                }
+                startHandsFreeCapture();
             });
         }
 
@@ -1732,6 +1795,343 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         toJs("onNativeMicState", micPaused ? "paused" : "idle");
     }
 
+    private void startHandsFreeCapture() {
+        if (!handsFreeEnabled || micPaused || handsFreeRunning) return;
+        final String key = loadSecretValue("voice_api");
+        final int rate = 16000;
+        final int min = AudioRecord.getMinBufferSize(rate,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        if (min <= 0) {
+            toJs("onNativeHandsFreeState", "unavailable");
+            return;
+        }
+        try {
+            handsFreeRecorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                    Math.max(min * 2, rate * 2));
+            handsFreeRecorder.startRecording();
+        } catch (Exception e) {
+            Log.w(TAG, "hands-free mic failed", e);
+            handsFreeRecorder = null;
+            toJs("onNativeHandsFreeState", "unavailable");
+            return;
+        }
+        handsFreeRunning = true;
+        handsFreeThread = new Thread(() -> handsFreeLoop(rate, key), "owlbot-ears");
+        handsFreeThread.start();
+        toJs("onNativeHandsFreeState", "listening");
+    }
+
+    private void stopHandsFreeCapture() {
+        handsFreeRunning = false;
+        handsFreeTranscribing = false;
+        handsFreeTranscriptionGeneration++;
+        if (handsFreeTranscriptionTimeout != null) {
+            main.removeCallbacks(handsFreeTranscriptionTimeout);
+            handsFreeTranscriptionTimeout = null;
+        }
+        handsFreePartial = "";
+        closeHandsFreeAudioRead();
+        main.post(() -> {
+            if (handsFreeSpeechRecognizer != null) {
+                try { handsFreeSpeechRecognizer.cancel(); } catch (Exception ignored) {}
+            }
+        });
+        AudioRecord r = handsFreeRecorder;
+        handsFreeRecorder = null;
+        if (r != null) {
+            try { r.stop(); } catch (Exception ignored) {}
+            try { r.release(); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handsFreeLoop(int rate, String key) {
+        final int frameSamples = 320; // 20 ms
+        short[] frame = new short[frameSamples];
+        ArrayList<short[]> pre = new ArrayList<>();
+        ByteArrayOutputStream utterance = null;
+        double floor = 0.012;
+        int voiced = 0, silence = 0, utteranceFrames = 0, featureFrames = 0;
+        try {
+            while (handsFreeRunning && handsFreeRecorder != null) {
+                int n = handsFreeRecorder.read(frame, 0, frame.length);
+                if (n <= 0) continue;
+                double sum = 0;
+                for (int i = 0; i < n; i++) { double v = frame[i] / 32768.0; sum += v * v; }
+                double rms = Math.sqrt(sum / n);
+                if (++featureFrames >= 10) {
+                    featureFrames = 0;
+                    double[] pitch = estimatePitch(frame, n, rate, rms);
+                    String feature = String.format(Locale.US,
+                            "{\"midi\":%.2f,\"confidence\":%.3f,\"rms\":%.4f}",
+                            pitch[0], pitch[1], rms);
+                    if (rms >= .018) toJs("onNativeSoundFeature", feature);
+                }
+                if (utterance == null) floor += (rms - floor) * (rms < floor ? .10 : .002);
+                boolean allowed = System.currentTimeMillis() >= handsFreeResumeAt;
+                boolean voice = allowed && !handsFreeTranscribing
+                        && rms > Math.max(.026, floor + .018);
+                toJs("onNativeMicLevel", String.valueOf(Math.min(1.0, rms * 9.0)));
+
+                short[] copy = new short[n];
+                System.arraycopy(frame, 0, copy, 0, n);
+                if (utterance == null) {
+                    pre.add(copy);
+                    while (pre.size() > 30) pre.remove(0); // 600 ms real pre-roll
+                    voiced = voice ? voiced + 1 : 0;
+                    if (voiced >= 6) { // 120 ms sustained above the adaptive floor
+                        utterance = new ByteArrayOutputStream();
+                        for (short[] p : pre) writePcm16(utterance, p, p.length);
+                        pre.clear();
+                        utteranceFrames = voiced;
+                        silence = 0;
+                        toJs("onNativeHandsFreeState", "hearing");
+                    }
+                } else {
+                    writePcm16(utterance, copy, n);
+                    utteranceFrames++;
+                    silence = voice ? 0 : silence + 1;
+                    if (silence >= 65 || utteranceFrames >= 600) { // 1.3 s silence / 12 s cap
+                        byte[] pcm = utterance.toByteArray();
+                        utterance = null; voiced = 0; silence = 0; utteranceFrames = 0;
+                        if (pcm.length >= rate * 2 / 3) transcribeHandsFreePcm(pcm, rate, key);
+                        else toJs("onNativeHandsFreeState", "listening");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            if (handsFreeRunning) Log.w(TAG, "hands-free loop failed", e);
+        } finally {
+            stopHandsFreeCapture();
+        }
+    }
+
+    /** Local-only autocorrelation pitch estimate. Raw microphone samples never leave this method. */
+    private static double[] estimatePitch(short[] frame, int n, int rate, double rms) {
+        if (rms < .018 || n < 160) return new double[]{0, 0};
+        int minLag = Math.max(1, rate / 900);
+        int maxLag = Math.min(n - 32, rate / 75);
+        double best = 0;
+        int bestLag = 0;
+        for (int lag = minLag; lag <= maxLag; lag++) {
+            double cross = 0, a = 0, b = 0;
+            for (int i = 0; i < n - lag; i++) {
+                double x = frame[i], y = frame[i + lag];
+                cross += x * y; a += x * x; b += y * y;
+            }
+            double corr = cross / Math.sqrt(Math.max(1.0, a * b));
+            if (corr > best) { best = corr; bestLag = lag; }
+        }
+        if (bestLag == 0 || best < .35) return new double[]{0, Math.max(0, best)};
+        double hz = (double) rate / bestLag;
+        double midi = 69.0 + 12.0 * (Math.log(hz / 440.0) / Math.log(2.0));
+        return new double[]{midi, best};
+    }
+
+    private static void writePcm16(ByteArrayOutputStream out, short[] data, int n) {
+        for (int i = 0; i < n; i++) { out.write(data[i] & 0xff); out.write((data[i] >>> 8) & 0xff); }
+    }
+
+    private static byte[] wavFromPcm(byte[] pcm, int rate) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(pcm.length + 44);
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeBytes("RIFF"); writeLe32(out, pcm.length + 36); out.writeBytes("WAVEfmt ");
+        writeLe32(out, 16); writeLe16(out, 1); writeLe16(out, 1); writeLe32(out, rate);
+        writeLe32(out, rate * 2); writeLe16(out, 2); writeLe16(out, 16);
+        out.writeBytes("data"); writeLe32(out, pcm.length); out.write(pcm); out.flush();
+        return bytes.toByteArray();
+    }
+    private static void writeLe16(DataOutputStream out, int v) throws Exception { out.writeByte(v); out.writeByte(v >>> 8); }
+    private static void writeLe32(DataOutputStream out, int v) throws Exception { out.writeByte(v); out.writeByte(v >>> 8); out.writeByte(v >>> 16); out.writeByte(v >>> 24); }
+
+    /** Android 13+ can transcribe an already-opened PCM audio source. This lets
+     *  OwlBot keep its quiet local VAD while reusing the same system recognizer
+     *  as push-to-talk: no Whisper account, no extra microphone session, and
+     *  therefore no recognizer-start beep loop. */
+    private void transcribeHandsFreePcm(final byte[] pcm, final int rate, final String fallbackKey) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            transcribeWithSystemRecognizer(pcm, rate, fallbackKey);
+            return;
+        }
+        if (fallbackKey != null && !fallbackKey.trim().isEmpty()) {
+            try { transcribeHandsFree(wavFromPcm(pcm, rate), fallbackKey); }
+            catch (Exception e) { toJs("onNativeSpeechError", "audio preparation failed"); }
+        } else {
+            toJs("onNativeHandsFreeState", "legacy-needs-key");
+        }
+    }
+
+    private void closeHandsFreeAudioRead() {
+        ParcelFileDescriptor p = handsFreeAudioRead;
+        handsFreeAudioRead = null;
+        if (p != null) try { p.close(); } catch (Exception ignored) {}
+    }
+
+    private void finishSystemHandsFreeTranscription(long generation, String text, int error,
+                                                       String fallbackKey, byte[] pcm, int rate) {
+        if (generation != handsFreeTranscriptionGeneration || !handsFreeTranscribing) return;
+        handsFreeTranscribing = false;
+        if (handsFreeTranscriptionTimeout != null) {
+            main.removeCallbacks(handsFreeTranscriptionTimeout);
+            handsFreeTranscriptionTimeout = null;
+        }
+        closeHandsFreeAudioRead();
+        String finalText = text == null ? "" : text.trim();
+        if (finalText.isEmpty()) finalText = handsFreePartial.trim();
+        handsFreePartial = "";
+        if (!finalText.isEmpty()) {
+            Log.i(TAG, "hands-free transcript delivered: chars=" + finalText.length());
+            toJs("onNativeSpeech", finalText);
+        }
+        else if (error != 0 && fallbackKey != null && !fallbackKey.trim().isEmpty()) {
+            try { transcribeHandsFree(wavFromPcm(pcm, rate), fallbackKey); return; }
+            catch (Exception ignored) {}
+        } else if (error != 0 && error != SpeechRecognizer.ERROR_NO_MATCH
+                && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+            toJs("onNativeSpeechError", "system transcription error " + error);
+        }
+        toJs("onNativeHandsFreeState", handsFreeEnabled && !micPaused ? "listening" : "off");
+    }
+
+    private void transcribeWithSystemRecognizer(final byte[] pcm, final int rate,
+                                                  final String fallbackKey) {
+        main.post(() -> {
+            if (!handsFreeEnabled || micPaused || handsFreeTranscribing) return;
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                if (fallbackKey != null && !fallbackKey.trim().isEmpty()) {
+                    try { transcribeHandsFree(wavFromPcm(pcm, rate), fallbackKey); }
+                    catch (Exception ignored) {}
+                } else toJs("onNativeHandsFreeState", "unavailable");
+                return;
+            }
+            try {
+                handsFreeTranscribing = true;
+                final long generation = ++handsFreeTranscriptionGeneration;
+                handsFreePartial = "";
+                toJs("onNativeHandsFreeState", "transcribing");
+                if (handsFreeSpeechRecognizer != null) handsFreeSpeechRecognizer.destroy();
+                boolean onDevice = Build.VERSION.SDK_INT >= 31
+                        && SpeechRecognizer.isOnDeviceRecognitionAvailable(this);
+                handsFreeSpeechRecognizer = onDevice
+                        ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                        : SpeechRecognizer.createSpeechRecognizer(this);
+                handsFreeSpeechRecognizer.setRecognitionListener(new RecognitionListener() {
+                    @Override public void onResults(Bundle b) {
+                        ArrayList<String> hits=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        finishSystemHandsFreeTranscription(generation,
+                                hits!=null&&!hits.isEmpty()?hits.get(0):"",0,fallbackKey,pcm,rate);
+                    }
+                    @Override public void onError(int error) {
+                        Log.w(TAG,"hands-free system recognizer error=" + error);
+                        finishSystemHandsFreeTranscription(generation,"",error,fallbackKey,pcm,rate);
+                    }
+                    @Override public void onReadyForSpeech(Bundle b) {}
+                    @Override public void onBeginningOfSpeech() {}
+                    @Override public void onRmsChanged(float rms) {}
+                    @Override public void onBufferReceived(byte[] b) {}
+                    @Override public void onEndOfSpeech() {}
+                    @Override public void onPartialResults(Bundle b) {
+                        ArrayList<String> hits=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (hits!=null&&!hits.isEmpty()&&!hits.get(0).trim().isEmpty())
+                            handsFreePartial=hits.get(0).trim();
+                    }
+                    @Override public void onSegmentResults(Bundle b) {
+                        ArrayList<String> hits=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (hits!=null&&!hits.isEmpty()&&!hits.get(0).trim().isEmpty()) {
+                            String segment=hits.get(0).trim();
+                            if (handsFreePartial.isEmpty()) handsFreePartial=segment;
+                            else if (!handsFreePartial.endsWith(segment)) handsFreePartial += " " + segment;
+                        }
+                    }
+                    @Override public void onEndOfSegmentedSession() {
+                        finishSystemHandsFreeTranscription(generation,handsFreePartial,0,
+                                fallbackKey,pcm,rate);
+                    }
+                    @Override public void onEvent(int type, Bundle b) {}
+                });
+                ParcelFileDescriptor[] pipe=ParcelFileDescriptor.createPipe();
+                handsFreeAudioRead=pipe[0];
+                Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1);
+                intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE,handsFreeAudioRead);
+                intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT,1);
+                intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,AudioFormat.ENCODING_PCM_16BIT);
+                intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE,rate);
+                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true);
+                intent.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION,
+                        RecognizerIntent.EXTRA_AUDIO_SOURCE);
+                Log.i(TAG,"hands-free recognizer start: bytes=" + pcm.length
+                        + ", onDevice=" + onDevice);
+                handsFreeSpeechRecognizer.startListening(intent);
+                handsFreeTranscriptionTimeout = () -> {
+                    if (generation != handsFreeTranscriptionGeneration || !handsFreeTranscribing) return;
+                    Log.w(TAG,"hands-free recognizer timed out; partialChars=" + handsFreePartial.length());
+                    try { handsFreeSpeechRecognizer.cancel(); } catch (Exception ignored) {}
+                    finishSystemHandsFreeTranscription(generation,handsFreePartial,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT,fallbackKey,pcm,rate);
+                };
+                main.postDelayed(handsFreeTranscriptionTimeout,15000L);
+                new Thread(() -> {
+                    try (FileOutputStream out=new FileOutputStream(pipe[1].getFileDescriptor())) {
+                        out.write(pcm);out.flush();
+                    } catch (Exception e) { Log.w(TAG,"system audio injection failed",e); }
+                    finally { try { pipe[1].close(); } catch (Exception ignored) {} }
+                },"owlbot-system-stt-audio").start();
+            } catch (Exception e) {
+                handsFreeTranscribing=false;closeHandsFreeAudioRead();
+                if (handsFreeTranscriptionTimeout != null) {
+                    main.removeCallbacks(handsFreeTranscriptionTimeout);
+                    handsFreeTranscriptionTimeout = null;
+                }
+                Log.w(TAG,"system hands-free transcription failed",e);
+                if (fallbackKey != null && !fallbackKey.trim().isEmpty()) {
+                    try { transcribeHandsFree(wavFromPcm(pcm,rate),fallbackKey); }
+                    catch (Exception ignored) {}
+                } else toJs("onNativeHandsFreeState","unavailable");
+            }
+        });
+    }
+
+    private void transcribeHandsFree(final byte[] wav, final String key) {
+        toJs("onNativeHandsFreeState", "transcribing");
+        new Thread(() -> {
+            HttpURLConnection c = null;
+            try {
+                String boundary = "----OwlBot" + System.currentTimeMillis();
+                c = (HttpURLConnection) new URL(speechUrl).openConnection();
+                c.setConnectTimeout(15000); c.setReadTimeout(45000); c.setDoOutput(true);
+                c.setRequestMethod("POST"); c.setRequestProperty("Authorization", "Bearer " + key);
+                c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                OutputStream out = c.getOutputStream();
+                writePart(out, boundary, "model", speechModel.getBytes(StandardCharsets.UTF_8), null, "text/plain");
+                writePart(out, boundary, "file", wav, "speech.wav", "audio/wav");
+                out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8)); out.close();
+                int status = c.getResponseCode();
+                InputStream in = status >= 200 && status < 300 ? c.getInputStream() : c.getErrorStream();
+                BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                StringBuilder body = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) body.append(line);
+                if (status < 200 || status >= 300) throw new Exception("speech service " + status);
+                String text = new JSONObject(body.toString()).optString("text", "").trim();
+                if (!text.isEmpty()) toJs("onNativeSpeech", text);
+                toJs("onNativeHandsFreeState", handsFreeEnabled && !micPaused ? "listening" : "off");
+            } catch (Exception e) {
+                Log.w(TAG, "hands-free transcription failed: " + e.getMessage());
+                toJs("onNativeSpeechError", "hands-free transcription failed");
+                toJs("onNativeHandsFreeState", handsFreeEnabled && !micPaused ? "listening" : "off");
+            } finally { if (c != null) c.disconnect(); }
+        }, "owlbot-stt").start();
+    }
+
+    private static void writePart(OutputStream out, String boundary, String name,
+                                  byte[] data, String filename, String type) throws Exception {
+        String disposition = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + name + "\"";
+        if (filename != null) disposition += "; filename=\"" + filename + "\"";
+        disposition += "\r\nContent-Type: " + type + "\r\n\r\n";
+        out.write(disposition.getBytes(StandardCharsets.UTF_8)); out.write(data); out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
     private void toJs(String fn, String arg) {
         final String js = "if(window." + fn + ")window." + fn + "("
                 + org.json.JSONObject.quote(arg == null ? "" : arg) + ");";
@@ -1763,6 +2163,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         stopLocationUpdates();
         // Backgrounded: stop holding the mic. It comes back in onResume.
         stopListening();
+        stopHandsFreeCapture();
         // Never leave the legs driving because the user swiped away.
         if (web != null) {
             web.evaluateJavascript(
@@ -1780,6 +2181,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             startHardwareSensors();
             startLocationUpdates();
         }
+        if (handsFreeEnabled && !micPaused) {
+            handsFreeResumeAt = System.currentTimeMillis() + 650;
+            startHandsFreeCapture();
+        }
     }
 
     @Override
@@ -1794,6 +2199,9 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         stopLocationUpdates();
         if (tts != null) { tts.stop(); tts.shutdown(); }
         if (recognizer != null) recognizer.destroy();
+        if (handsFreeSpeechRecognizer != null) handsFreeSpeechRecognizer.destroy();
+        closeHandsFreeAudioRead();
+        stopHandsFreeCapture();
         if (web != null) { web.destroy(); web = null; }
         super.onDestroy();
     }
