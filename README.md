@@ -19,10 +19,11 @@ OwlBot exists because of the original GrowBot project. Start there for the creat
 - [Original GrowBot source repository](https://github.com/britcruise9/GrowBot)
 - [Original GrowBot ESP32 build guide](https://growbot.dev/build-esp32)
 - [GrowBot software license: PolyForm Noncommercial 1.0.0](https://github.com/britcruise9/GrowBot/blob/main/LICENSE)
+- [Preserved GrowBot license text in this repository](LICENSES/GrowBot-PolyForm-Noncommercial-1.0.0.txt)
 
 GrowBot code is available for noncommercial use, modification, and sharing under PolyForm Noncommercial 1.0.0. GrowBot hardware and documentation have separate CC BY-NC 4.0 terms. Commercial GrowBot licensing is available from its owners at `info@growbot.dev`. GrowBot names, artwork, designs, services, firmware, and trademarks belong to their respective owners.
 
-The six-servo body used for the current OwlBot prototype is the smaller **9 g servo variant** (`CAD/dog02_9g.stp`) designed by **James Bruton / XRobots** and released under the MIT License. The upstream project also contains a separate standard-servo `dog02_large.stp` body; that is not the body used by this prototype.
+The mechanical body used for the current OwlBot prototype is based on the smaller **9 g servo variant** (`CAD/dog02_9g.stp`) designed by **James Bruton / XRobots** and released under the MIT License. The pictured OwlBot assembly has **eight servos** after the project's phone/gaze modifications; “six-servo” refers to James Bruton's original robot configuration and video title. The upstream project also contains a separate standard-servo `dog02_large.stp` body; that is not the body used by this prototype.
 
 - [XRobots YouCanBuildDog repository](https://github.com/XRobots/YouCanBuildDog)
 - [The Six-Servo Robot Dog — it's open source!](https://www.youtube.com/watch?v=2eKb_2N0SBI&t=1s)

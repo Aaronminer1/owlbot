@@ -9,10 +9,11 @@ This inventory documents the principal upstream projects currently referenced by
 - Source: https://github.com/britcruise9/GrowBot
 - Software license: PolyForm Noncommercial License 1.0.0
 - License text: https://github.com/britcruise9/GrowBot/blob/main/LICENSE
+- Preserved license copy: `LICENSES/GrowBot-PolyForm-Noncommercial-1.0.0.txt`
 - Hardware and documentation license: CC BY-NC 4.0
 - Hardware license notice: https://github.com/britcruise9/GrowBot/blob/main/hardware/LICENSE.md
 
-GrowBot software may be used, changed, and shared for permitted noncommercial purposes. Distribution of GrowBot software or derived GrowBot software must provide the PolyForm terms or their official URL. Commercial use requires a separate license from the GrowBot owners.
+GrowBot software may be used, changed, and shared for permitted noncommercial purposes. Distribution of GrowBot software or derived GrowBot software must provide the PolyForm terms or their official URL. Commercial use requires a separate license from the GrowBot owners. The preserved copy was retrieved from upstream commit `48c592ac6393341aefbcea363b7614c14426d150` and has SHA-256 `c0ea4a896d2c8c394b29f9427589996db826cd501c512279ff0ed3ef48fabbe5`.
 
 ## YouCanBuildDog body
 
@@ -26,7 +27,7 @@ GrowBot software may be used, changed, and shared for permitted noncommercial pu
 - Variant used by OwlBot: smaller 9 g servo body, `CAD/dog02_9g.stp`
 - Variant not used: standard-servo body, `CAD/dog02_large.stp`
 
-The MIT License permits use, copying, modification, merging, publication, distribution, sublicensing, and sale, provided the copyright and permission notice are included in copies or substantial portions. The OwlBot prototype uses the smaller six-servo 9 g mechanical body while substituting its own phone, controller, and experimental control stack.
+The MIT License permits use, copying, modification, merging, publication, distribution, sublicensing, and sale, provided the copyright and permission notice are included in copies or substantial portions. The OwlBot prototype is based on the smaller 9 g mechanical body while substituting its own phone, controller, experimental control stack, and additional actuation; the pictured assembly has eight servos.
 
 ## Android and model dependencies
 
