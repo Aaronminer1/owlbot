@@ -3370,7 +3370,7 @@ function refreshSelfUI(){
 }
 function selfDiagnostic(){
   const affect=currentAffectSnapshot();
-  return {version:"5.5",tuning:Object.assign({},SELF.tuning),
+  return {version:"5.6",tuning:Object.assign({},SELF.tuning),
     recentIssues:SELF.issues.slice(-8),pending:SELF.pending,
     voice:{engine:VOICE.engine,name:VOICE.name,busy:VOICE.busy},
     identity:{enabled:IDENT.enabled,profiles:IDENT.profiles.length,current:verifiedIdentity()?.name||null},

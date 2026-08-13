@@ -1,6 +1,6 @@
 # OwlBot architecture
 
-This document describes the Android OwlBot 5.5-community source snapshot. It is an implementation guide, not a safety or production-readiness claim.
+This document describes the Android OwlBot 5.6-community source snapshot. It is an implementation guide, not a safety or production-readiness claim.
 
 ## Runtime boundaries
 
