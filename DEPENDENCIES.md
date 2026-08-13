@@ -15,4 +15,6 @@ Only direct build/runtime dependencies are listed here. Transitive libraries are
 
 External endpoints—including Ollama/compatible model providers, Open-Meteo, search/news providers, Android speech services, and the GrowBot relay—are integrations rather than vendored dependencies. Their availability and terms are controlled by their operators. Users supply their own credentials where required.
 
+OpenAI Codex was used as a development tool to assist with implementation, audits, documentation, testing, and repository publication. It is not a runtime dependency of the OwlBot application, and no OpenAI credential is included in this repository.
+
 Before adding a dependency, service, media asset, model, or generated artifact, document its exact version/source, license or terms URL, whether it is redistributed, and any required notices. Noncommercial compatibility with OwlBot's root license is required.

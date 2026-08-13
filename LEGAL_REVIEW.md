@@ -33,6 +33,8 @@ OwlBot is distributed for noncommercial purposes under PolyForm Noncommercial 1.
 
 The Android namespace and application ID use `dev.owlbot.brain`; the app theme is `Theme.OwlBot`. References to GrowBot identify inspiration, upstream origin, or protocol/relay compatibility. This repository is not official, sponsored, or endorsed by GrowBot.
 
+OpenAI and Codex are named only to disclose substantial AI-assisted development. No OpenAI branding or assets are included, and the project does not claim affiliation, sponsorship, independent verification, or endorsement by OpenAI.
+
 ## Remaining operational obligations
 
 Maintainers must run the secret scan and clean build before releases, preserve `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, and `DEPENDENCIES.md`, review new dependencies and media before merging, and never attach an APK containing a downloaded model or credential. Any future commercial distribution requires written permission from every rights holder whose noncommercial material remains in the product.

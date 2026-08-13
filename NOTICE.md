@@ -24,3 +24,7 @@ YouCanBuildDog is released under the MIT License. Copyright © 2026 James Bruton
 Third-party Android dependencies and external services retain their own licenses and terms. Separately licensed model weights and the unofficial Microsoft Edge Read Aloud transport are not included in the community edition.
 
 OwlBot is distributed for noncommercial purposes under PolyForm Noncommercial 1.0.0. See `LICENSE`. Commercial and production-use permission is not granted merely because the mechanical body has an MIT license.
+
+## AI-assisted development
+
+The OwlBot codebase, documentation, audits, build verification, and hardware-integration work were created with substantial assistance from OpenAI Codex under the direction and review of the human maintainer. OpenAI and Codex are credited for tooling and development assistance only. This independent project is not affiliated with, sponsored by, or endorsed by OpenAI.

@@ -7,6 +7,10 @@ OwlBot is an experimental Android “phone brain” for a small GrowBot-style ro
 
 This repository is an independent community extension and is **not the official GrowBot project**.
 
+![Isometric CAD rendering of the smaller XRobots YouCanBuildDog 9 g servo body](docs/images/youcanbuilddog-9g-isometric.svg)
+
+<p align="center"><em>Smaller 9 g servo body rendered from James Bruton/XRobots' MIT-licensed <code>CAD/dog02_9g.stp</code>. This is a CAD view, not a photograph of the completed OwlBot electronics.</em></p>
+
 ## Project origins and attribution
 
 OwlBot exists because of the original GrowBot project. Start there for the creature, body concept, and official ESP32 build process:
@@ -27,6 +31,23 @@ The six-servo body used for the current OwlBot prototype is the smaller **9 g se
 The MIT license permits use, modification, distribution, sublicensing, and sale of the body project's materials, provided its copyright and permission notice remain with copies or substantial portions. Copyright © 2026 James Bruton. OwlBot replaces the original electronics and control software of the smaller 9 g body for this experiment; its mechanical design remains credited to James Bruton.
 
 This repository does not claim authorship of GrowBot or the YouCanBuildDog body. It contains the OwlBot Android phone-brain and integration work, and communicates with compatible robot controllers and the GrowBot relay/protocol where configured.
+
+<details>
+<summary>Additional body view</summary>
+
+![Top CAD rendering of the smaller XRobots YouCanBuildDog 9 g servo body](docs/images/youcanbuilddog-9g-top.svg)
+
+Both documentation images were generated from the upstream STEP model. Their exact provenance and reproduction instructions are in [`docs/images/README.md`](docs/images/README.md).
+
+</details>
+
+## AI-assisted development
+
+OwlBot was developed collaboratively by its human maintainer with substantial assistance from **OpenAI Codex**. Codex was used as an engineering agent to inspect and modify source code, reason about architecture, diagnose Android and hardware-integration problems, draft and revise documentation, perform licensing and provenance inventories, scan for exposed secrets, run builds and automated tests, and help interpret logged behavior from phone, ESP32, Pico, relay, and servo-controller experiments.
+
+The human maintainer chose the project goals, supplied the hardware and observations, granted permissions, evaluated behavior on physical devices, made publication decisions, and remains responsible for reviewing, testing, maintaining, and distributing the project. AI-generated or AI-edited work can contain mistakes; inclusion in this repository means it was accepted into the project, not that OpenAI independently verified or endorses OwlBot.
+
+OpenAI and Codex are credited for development assistance only. OwlBot is an independent community project and is not affiliated with, sponsored by, or endorsed by OpenAI.
 
 ## What OwlBot does
 
