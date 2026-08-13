@@ -3370,7 +3370,7 @@ function refreshSelfUI(){
 }
 function selfDiagnostic(){
   const affect=currentAffectSnapshot();
-  return {version:"5.6",tuning:Object.assign({},SELF.tuning),
+  return {version:"5.7",tuning:Object.assign({},SELF.tuning),
     recentIssues:SELF.issues.slice(-8),pending:SELF.pending,
     voice:{engine:VOICE.engine,name:VOICE.name,busy:VOICE.busy},
     identity:{enabled:IDENT.enabled,profiles:IDENT.profiles.length,current:verifiedIdentity()?.name||null},
@@ -10186,11 +10186,9 @@ window.onNativeSpeech = t => {
   if(EARS.paused||APP.resting||THERMAL.paused||thermalSerious())return;
   t = String(t||"").trim();
   if(t.length < 2) return;
-  if(EARS.handsFree){
-    const own=(VOICE.recentSpoken||[]).some(x=>Date.now()-x.t<9000&&
-      replySimilarity(t,x.text)>=.72);
-    if(own){log("hands-free ear rejected OwlBot's own voice","w");return;}
-  }
+  // Native hands-free capture is stopped while OwlBot speaks. Do not infer
+  // speaker echo from text similarity: a person may naturally repeat, quote,
+  // confirm, or correct OwlBot using the same words it just said.
   if(EARS.on){
     // Some recognisers endpoint on a pause before the finger is released.
     // Hold the result locally so "release to send" remains literally true.
