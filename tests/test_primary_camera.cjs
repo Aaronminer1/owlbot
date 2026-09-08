@@ -1,0 +1,13 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const root=__dirname+'/../app/src/main/assets/';
+const html=fs.readFileSync(root+'growbot-brain.html','utf8'),faces=fs.readFileSync(root+'face-identity.js','utf8');
+const camera=html.slice(html.indexOf('async function enableCamera('),html.indexOf('function disableCamera('));
+assert.match(camera,/facing === "back" \? "back" : "front"/);
+assert.match(camera,/facingMode:\{exact:/);assert.match(camera,/actualMode!==/);
+assert.match(camera,/target==='back'&&identityEnrollmentActive\(\)/);
+assert.match(html,/APP\.restCameraFacing='front'/);assert.match(html,/THERMAL\.cameraFacing='front'/);
+assert.match(html,/if\(identityEnrollmentActive\(\)\)throw Error\('Face introduction is local-only/);
+let pending,opened=[];const box={clearTimeout:()=>{},setTimeout:fn=>{pending=fn;return 1;},APP:{resting:false,settings:false},S:{cameraFacing:'back'},MIND:{busy:false},PERCEPTION:{busy:false},NW:{running:false},walkingStreamStatus:()=>({active:false}),enableCamera:f=>opened.push(f)};
+vm.createContext(box);vm.runInContext(faces.slice(faces.indexOf('let primaryCameraReturnTimer='),faces.indexOf('const fdCanvas=')),box);
+box.schedulePrimaryCameraReturn();box.NW.running=true;pending();assert.deepEqual(opened,[],'never steal a walking camera');box.NW.running=false;box.MIND.busy=true;pending();assert.deepEqual(opened,[],'wait for an in-flight model look');box.MIND.busy=false;pending();assert.deepEqual(opened,['front']);
+console.log('PASS: selfie default, actual-facing verification, front-only enrollment, local-only enrollment vision, deferred return from rear camera.');

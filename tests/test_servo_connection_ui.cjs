@@ -1,0 +1,20 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-brain.html'),'utf8');
+const elements={};
+const box={$:id=>elements[id]||(elements[id]={}),APP:{resting:true,settings:true},S:{ws:null,sim:false,link:null},CHANNEL_SETUP:{loaded:false,loading:false,live:false},window:{owlChannelsReady:true},ready:false,isDog6:()=>true};
+box.bodyControllerReady=()=>box.ready;box.queueChannelSettingsRefresh=()=>{};vm.createContext(box);
+vm.runInContext(html.slice(html.indexOf('function renderConnectionStatus(){'),html.indexOf('// One concise view')),box);
+function check(state,connectDisabled,disconnectDisabled){box.renderConnectionStatus();assert.equal(elements['#servoConnectionState'].textContent,state);assert.equal(elements['#btnServoConnect'].disabled,connectDisabled);assert.equal(elements['#btnServoDisconnect'].disabled,disconnectDisabled);}
+check('Disconnected',false,true);
+box.S.ws={readyState:0};check('Connecting',true,false);
+box.S.ws.readyState=1;check('Disconnected',false,false);assert.equal(elements['#btnServoConnect'].textContent,'Reconnect');
+box.ready=true;box.S.link='relay';check('Connected',true,false);assert.match(elements['#servoConnectionDetail'].textContent,/Load from Pico/);
+box.CHANNEL_SETUP.loaded=true;check('Connected',true,false);assert.match(elements['#servoConnectionDetail'].textContent,/responding now/);
+box.CHANNEL_SETUP.live=true;box.renderConnectionStatus();assert.equal(elements['#btnChannelsLoad'].disabled,true);
+box.ready=false;box.S.sim=true;check('Simulation — no hardware',true,false);assert.equal(elements['#btnChannelsLoad'].disabled,true);
+box.S.sim=false;box.APP.settings=false;check('Sleeping',true,true);
+assert.match(html,/\$\("#btnServoConnect"\)\.onclick=\(\)=>connect\(\{manual:true\}\)/);
+assert.match(html,/\$\("#btnServoDisconnect"\)\.onclick=disconnectBody/);
+const disconnect=html.slice(html.indexOf('function disconnectBody(){'),html.indexOf('function onBodyMessage('));
+assert.match(disconnect,/invalidateControllerChannels\(\)/,'manual disconnect invalidates stale calibration controls');
+console.log('PASS: servo connection states, stalled reconnect, settings sleep, load gating, simulation and disconnect invalidation.');

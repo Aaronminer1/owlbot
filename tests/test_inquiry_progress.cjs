@@ -1,0 +1,92 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const dir=path.join(__dirname,'../app/src/main/assets');
+const html=fs.readFileSync(path.join(dir,'growbot-brain.html'),'utf8'),moduleSource=fs.readFileSync(path.join(dir,'inquiry-progress.js'),'utf8');
+const part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
+let clock=100000,wonder=null,credits=[],saved={},ready=true;
+const task={id:'explore',source:'owner',title:'Explore the room and inspect the orange box',requiresMotion:true,status:'active',created:100,updated:500,evidence:[],stepIndex:0,steps:['approach','inspect','continue']};
+const box={console,Date:{now:()=>clock},Math,Number,JSON,Set,APP:{resting:false,settings:false},MIND:{on:true,motionArmed:true,initiativeExperiments:0},AUTONOMY:{enabled:true},S:{bodyLastSeenAt:clock},TASKS:{items:[task]},
+ localStorage:{getItem:k=>saved[k]||null,setItem:(k,v)=>saved[k]=v},activeWonder:()=>wonder,activeOwnerTask:()=>box.TASKS.items.find(t=>t.status==='active'&&t.source==='owner'),
+ recordCuriosityMove:(...args)=>credits.push(args),bodyControllerReady:()=>ready,taskSave:()=>{},autonomySave:()=>{}};
+vm.createContext(box);
+vm.runInContext(part('function perceptionTerms(','/* Semantic scene memory'),box);
+vm.runInContext(part('function classifyActionResult(','function recordActionOutcome('),box);
+vm.runInContext(moduleSource,box);
+const state=()=>vm.runInContext('INQUIRY',box);
+box.inquiryAction('move','Controller completed; physical position is not measured');
+box.inquiryAction('look_at','Head movement failed: ack timeout');
+assert.equal(credits.length,0,'ACKs and failed tool calls never feed curiosity');
+const report='CHANGE: MAJOR. An orange case has a label reading BLACK+DECKER drill kit. OPEN QUESTION: What is inside? FOCUS: 0,0,case';
+box.inquiryObserve(report,clock,'front');assert.equal(credits.length,1);
+clock+=1000;box.inquiryObserve(report,clock,'front');
+clock+=1000;box.inquiryObserve(report.replace('What is inside?','Could this be storage?'),clock,'front');
+assert.equal(credits.length,1,'rephrased questions and duplicate views do not count as new evidence');
+assert.equal(state().unchangedViews,2);assert.match(box.inquirySnapshot().critique,/different useful viewpoint/);
+wonder={id:'q1',question:'What does the orange case contain?',hypothesis:'It may contain tools',nextTest:'Read the label',evidence:[]};
+box.inquiryBindWonder(wonder,{target:'orange case'});
+assert.equal(wonder.destination,task.title);assert.equal(wonder.taskId,task.id);
+const id=state().evidence.at(-1).id,quote='An orange case has a label reading BLACK+DECKER drill kit.';
+assert(box.inquiryEvidenceContext().includes(id));
+assert(box.inquiryEvidenceContext().includes(quote));
+assert(box.inquiryValidateEvidence(wonder,{evidenceId:'missing'}).error.includes(id),'rejection offers actual fresh evidence IDs instead of another blind look');
+let args={evidenceId:id,evidence:quote,status:'resolved',predictionResult:'confirmed'};
+assert.equal(box.inquiryValidateEvidence(wonder,args).ok,true);
+assert.equal(box.inquiryValidateEvidence(wonder,{...args,evidence:'I walked through the doorway.'}).ok,false);
+assert.equal(box.inquiryValidateEvidence(wonder,{...args,predictionResult:'inconclusive'}).ok,false);
+wonder.evidenceIds=[id];assert.equal(box.inquiryValidateEvidence(wonder,args).ok,false);
+wonder.evidenceIds=[];clock+=60001;assert.equal(box.inquiryValidateEvidence(wonder,args).ok,false,'stale vision is rejected');
+const oldEvidence=state().evidence.length;box.APP.resting=true;box.inquiryObserve('A completely new hallway with a window.',++clock,'front');assert.equal(state().evidence.length,oldEvidence);box.APP.resting=false;
+vm.runInContext('INQUIRY.evidence=[];inquiryLoad()',box);assert.equal(state().evidence.length,oldEvidence,'evidence journal survives reload without inventing freshness');
+assert.equal(box.inquirySnapshot().focus.destination,task.title);
+// Reconnection preserves the original destination and step, but cannot move.
+task.status='blocked';task.resumeOnConnection=true;task.blockedAt=clock-1000;
+const generic={id:'generic',source:'owner',title:'self improve',status:'active',created:50};box.TASKS.items.push(generic);box.S.bodyLastSeenAt=clock;
+box.APP.resting=true;assert.equal(box.resumeInterruptedInvestigation(),false);box.APP.resting=false;
+box.MIND.motionArmed=false;assert.equal(box.resumeInterruptedInvestigation(),false);box.MIND.motionArmed=true;
+ready=false;assert.equal(box.resumeInterruptedInvestigation(),false);ready=true;
+box.S.bodyLastSeenAt=task.blockedAt-1;assert.equal(box.resumeInterruptedInvestigation(),false);box.S.bodyLastSeenAt=clock;
+generic.created=clock;assert.equal(box.resumeInterruptedInvestigation(),false,'new owner work wins');generic.created=50;
+assert.equal(box.resumeInterruptedInvestigation(),true);assert.equal(task.status,'active');assert.equal(generic.status,'queued');assert.equal(task.stepIndex,0);
+task.status='cancelled';task.resumeOnConnection=true;assert.equal(box.resumeInterruptedInvestigation(),false);
+task.status='blocked';task.resumeOnConnection=false;assert.equal(box.resumeInterruptedInvestigation(),false,'obstacle/owner pause cannot auto-resume');
+delete task.resumeOnConnection;task.evidence=[{text:'Pico connection is offline after a failed reconnect.'}];task.updated=clock;
+box.inquiryMigrateBlockedTasks();assert.equal(task.resumeOnConnection,true);
+delete task.resumeOnConnection;task.evidence=[{text:'Owner paused exploration; servo power unplugged.'}];box.inquiryMigrateBlockedTasks();assert.equal(task.resumeOnConnection,undefined);
+// The actual task updater no longer advances a step just for logging progress.
+Object.assign(box,{FACE:{set:()=>{}},logEpisode:()=>{},activateNextTask:()=>{},personalGoalSimilarity:()=>1});
+vm.runInContext(part('function updateTaskRecord(','function updateOwnerTask('),box);
+box.updateTaskRecord(task,{status:'progress',evidence:'A movement command was acknowledged.'},'owner');assert.equal(task.stepIndex,0);
+box.updateTaskRecord(task,{status:'progress',evidence:quote,stepComplete:true},'owner');assert.equal(task.stepIndex,1);
+// Exercise real open/update functions, not only the evidence helper.
+Object.assign(box,{WONDER:{threads:[],opened:0,resolved:0},LIFE:{curiosity:.5},clamp:(x,a,b)=>Math.max(a,Math.min(b,x)),
+  wonderSave:()=>{},setAffect:()=>{},goalEvent:()=>{},autonomyOutcome:()=>{},personalGoalSimilarity:()=>0});
+vm.runInContext(part('function openWonder(','/* Functional self-awareness'),box);
+box.openWonder({target:'orange case',question:'What does this case contain?',observation:quote,why:'Find out what the owner stores here',hypothesis:'It holds tools',nextTest:'Read the printed label',interest:.7});
+wonder=box.WONDER.threads[0];assert.equal(wonder.target,'orange case');assert.equal(wonder.destination,task.title);
+assert.match(box.advanceWonder({id:'nonexistent',evidence:'No observation yet',status:'abandoned'}),/that ID is not an open wonder/);
+assert.equal(wonder.status,'open','bad explicit IDs must never update the current focus instead');
+const other={id:'old-electronics',status:'open',taskId:'other-owner-task',evidence:[]};box.WONDER.threads.push(other);
+assert.match(box.advanceWonder({id:other.id,evidence:'A yellow container is visible',status:'abandoned'}),/not the selected investigation/);
+assert.equal(other.status,'open');
+assert.match(box.advanceWonder({evidence:'Pico completed three cycles.',status:'resolved',predictionResult:'confirmed'}),/rejected/);
+clock+=1000;box.inquiryObserve(report,clock,'front');const freshId=state().evidence.at(-1).id;
+assert.match(box.advanceWonder({evidenceId:freshId,evidence:quote,status:'resolved',predictionResult:'confirmed',revisedHypothesis:'The printed label identifies a drill kit.'}),/updated: resolved/);
+assert.equal(wonder.status,'resolved');assert.equal(wonder.evidenceIds[0],freshId);
+// Real focus selection must not let an old task redirect a current approach.
+vm.runInContext(part('function activeWonder(','function openWonder('),box);
+assert.equal(box.activeWonder(),null,'no related investigation means choose a new current-task question, not the old electronics target');
+assert.doesNotMatch(box.wonderSummary(),/old-electronics/);
+other.question='Old electronics question';other.interest=1;other.updated=clock;
+const current={id:'current-case',taskId:task.id,status:'open',question:'Read the case label',updated:clock,interest:.5};
+box.WONDER.threads.push(current);box.WONDER.focusId=other.id;
+assert.equal(box.activeWonder().id,current.id,'current owner task wins over stale high-interest focus');
+assert.doesNotMatch(box.wonderSummary(),/Old electronics/);
+task.status='done';box.WONDER.focusId=other.id;
+assert.equal(box.activeWonder().id,other.id,'old investigations remain available outside current owner work');
+// Actual curiosity accounting ignores duplicate reports and failed commands.
+box.CURIOSITY={recentMoves:[],questions:0,experiments:0,discoveries:0,appetite:1,drive:.8};box.curiosityAppetite=()=>box.CURIOSITY.appetite;box.curiositySave=()=>{};
+vm.runInContext(part('function replySimilarity(','function unsupportedSpokenClaim('),box);
+vm.runInContext(part('function recordCuriosityMove(','function isVisibleCuriosityLine('),box);
+box.recordCuriosityMove('experiment','look_at','Head movement failed: ack timeout');assert.equal(box.CURIOSITY.experiments,0);
+box.recordCuriosityMove('experiment','new observation',quote);box.recordCuriosityMove('experiment','new observation',quote);assert.equal(box.CURIOSITY.experiments,1);
+const appetite=box.CURIOSITY.appetite;box.recordCuriosityMove('question','What is that box?');assert.equal(box.CURIOSITY.appetite,appetite,'asking alone cannot satisfy curiosity');
+console.log('PASS: persistent investigation, fresh evidence references, no ACK rewards, repeated-view critique, exact evidence excerpts, guarded reconnection and explicit step completion.');

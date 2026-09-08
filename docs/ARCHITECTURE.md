@@ -1,6 +1,6 @@
 # OwlBot architecture
 
-This document describes the Android OwlBot 5.7-community source snapshot. It is an implementation guide, not a safety or production-readiness claim.
+This document describes the Android OwlBot 7.12-community source snapshot. It is an implementation guide, not a safety or production-readiness claim.
 
 ## Runtime boundaries
 
@@ -24,7 +24,7 @@ The JavaScript bridge is exposed only to the app’s bundled `file:///android_as
 
 ### OwlBot brain page
 
-`growbot-brain.html` contains the face, state machines, memory, behavior, controls, model client, tool descriptions, tool executor, body transport, gait generator, calibration, and autonomy executive.
+`growbot-brain.html` contains the face, state machines, controls, model client and tool executor. Bundled JavaScript modules separate context budgeting/retrieval, interaction priority, remembered answers, initiative, identity consent, named gait control, continuous walking, and head control. A switchable self-improvement loop defaults off; normal memory and conversation do not require it.
 
 The face uses a deterministic context resolver around reasoned model appraisal. Thermal protection, Rest, falls/free-fall, critical battery, and active listening/thinking/speaking are immediate truths. A fresh model or verified-outcome appraisal then controls the face with its stored reason; lower-priority recovery, touch/play, locomotion, and task context fill in only when no fresher appraisal exists. Repeated automatic failure resolves to confused/focused, never angry. Anger requires an explicit current model appraisal with a concrete reason.
 
@@ -50,6 +50,8 @@ The tool loop adds an assistant tool-call message, executes bounded native/local
 ### Local vision
 
 The public community build does not bundle a local-model runtime or automatically download model weights. Cloud vision uses the provider explicitly selected and configured by the user. A future local-model integration must present and honor the model's terms before download and must keep weights out of Git and release APKs.
+
+The newer face-embedding pipeline likewise requires a separately reviewed native backend and model files; those are not bundled here. Without that backend, enrollment controls are disabled, no match is claimed, and stored profiles can still be forgotten. Older pixel-based profiles are retained but are not silently treated as new-engine embeddings.
 
 ### Body control
 

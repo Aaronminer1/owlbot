@@ -136,6 +136,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean handsFreeEnabled = false;
     private volatile boolean handsFreeRunning = false;
+    private volatile long handsFreeCaptureGeneration = 0;
     private volatile long handsFreeResumeAt = 0;
     private volatile AudioRecord handsFreeRecorder;
     private SpeechRecognizer handsFreeSpeechRecognizer;
@@ -176,7 +177,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
 
     private String checkedSecretName(String name) {
         if ("mind_api".equals(name) || "voice_api".equals(name)
-                || "body_control".equals(name)) return name;
+                || "body_control".equals(name) || "head_control".equals(name)) return name;
         return null;
     }
 
@@ -1375,6 +1376,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         @JavascriptInterface
         public void setMicPaused(final boolean paused) {
             main.post(() -> {
+                final boolean wasPaused = micPaused;
                 micPaused = paused;
                 if (paused) {
                     pendingSpeechListen = false;
@@ -1383,7 +1385,8 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 } else if (handsFreeEnabled) {
                     // The rolling pre-buffer already protects the first syllable. Keep only
                     // a short echo guard so quick replies such as "yes" are not missed.
-                    handsFreeResumeAt = System.currentTimeMillis() + 300;
+                    if (wasPaused || !handsFreeRunning)
+                        handsFreeResumeAt = System.currentTimeMillis() + 180;
                     startHandsFreeCapture();
                 }
             });
@@ -1819,12 +1822,19 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             return;
         }
         handsFreeRunning = true;
-        handsFreeThread = new Thread(() -> handsFreeLoop(rate, key), "owlbot-ears");
+        final long captureGeneration = ++handsFreeCaptureGeneration;
+        final AudioRecord capture = handsFreeRecorder;
+        handsFreeThread = new Thread(() -> handsFreeLoop(rate, key, capture, captureGeneration), "owlbot-ears");
         handsFreeThread.start();
-        toJs("onNativeHandsFreeState", "listening");
+        toJs("onNativeHandsFreeState", "starting");
+        main.postDelayed(() -> {
+            if (captureGeneration == handsFreeCaptureGeneration && handsFreeRunning && !micPaused)
+                toJs("onNativeHandsFreeState", "listening");
+        }, Math.max(0, handsFreeResumeAt - System.currentTimeMillis()));
     }
 
     private void stopHandsFreeCapture() {
+        handsFreeCaptureGeneration++;
         handsFreeRunning = false;
         handsFreeTranscribing = false;
         handsFreeTranscriptionGeneration++;
@@ -1834,30 +1844,30 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         }
         handsFreePartial = "";
         closeHandsFreeAudioRead();
-        main.post(() -> {
-            if (handsFreeSpeechRecognizer != null) {
-                try { handsFreeSpeechRecognizer.cancel(); } catch (Exception ignored) {}
-            }
-        });
+        if (handsFreeSpeechRecognizer != null) {
+            try { handsFreeSpeechRecognizer.cancel(); } catch (Exception ignored) {}
+        }
         AudioRecord r = handsFreeRecorder;
         handsFreeRecorder = null;
         if (r != null) {
             try { r.stop(); } catch (Exception ignored) {}
             try { r.release(); } catch (Exception ignored) {}
         }
+        toJs("onNativeHandsFreeState", handsFreeEnabled && micPaused ? "paused" : "off");
     }
 
-    private void handsFreeLoop(int rate, String key) {
+    private void handsFreeLoop(int rate, String key, AudioRecord capture, long captureGeneration) {
         final int frameSamples = 320; // 20 ms
         short[] frame = new short[frameSamples];
         ArrayList<short[]> pre = new ArrayList<>();
         ByteArrayOutputStream utterance = null;
-        double floor = 0.012;
+        SpeechActivityGate gate = new SpeechActivityGate();
         int voiced = 0, silence = 0, utteranceFrames = 0, featureFrames = 0;
         try {
-            while (handsFreeRunning && handsFreeRecorder != null) {
-                int n = handsFreeRecorder.read(frame, 0, frame.length);
+            while (handsFreeRunning && captureGeneration == handsFreeCaptureGeneration) {
+                int n = capture.read(frame, 0, frame.length);
                 if (n <= 0) continue;
+                if (captureGeneration != handsFreeCaptureGeneration) break;
                 double sum = 0;
                 for (int i = 0; i < n; i++) { double v = frame[i] / 32768.0; sum += v * v; }
                 double rms = Math.sqrt(sum / n);
@@ -1868,11 +1878,15 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                             "{\"midi\":%.2f,\"confidence\":%.3f,\"rms\":%.4f}",
                             pitch[0], pitch[1], rms);
                     if (rms >= .018) toJs("onNativeSoundFeature", feature);
+                    toJs("onNativeHearingDiagnostic", String.format(Locale.US,
+                            "{\"rms\":%.4f,\"threshold\":%.4f,\"transcribing\":%s}",
+                            rms, gate.threshold(utterance != null), handsFreeTranscribing));
                 }
-                if (utterance == null) floor += (rms - floor) * (rms < floor ? .10 : .002);
                 boolean allowed = System.currentTimeMillis() >= handsFreeResumeAt;
+                if (allowed && !handsFreeTranscribing) gate.observeAmbient(rms);
                 boolean voice = allowed && !handsFreeTranscribing
-                        && rms > Math.max(.026, floor + .018);
+                        && gate.isVoice(rms, utterance != null);
+                if (allowed && !handsFreeTranscribing && utterance == null && !voice) gate.observeNoise(rms);
                 toJs("onNativeMicLevel", String.valueOf(Math.min(1.0, rms * 9.0)));
 
                 short[] copy = new short[n];
@@ -1881,7 +1895,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                     pre.add(copy);
                     while (pre.size() > 30) pre.remove(0); // 600 ms real pre-roll
                     voiced = voice ? voiced + 1 : 0;
-                    if (voiced >= 6) { // 120 ms sustained above the adaptive floor
+                    if (voiced >= 4) { // 80 ms; pre-roll retains quiet first syllables
                         utterance = new ByteArrayOutputStream();
                         for (short[] p : pre) writePcm16(utterance, p, p.length);
                         pre.clear();
@@ -1892,9 +1906,11 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 } else {
                     writePcm16(utterance, copy, n);
                     utteranceFrames++;
-                    silence = voice ? 0 : silence + 1;
-                    if (silence >= 65 || utteranceFrames >= 600) { // 1.3 s silence / 12 s cap
+                    silence = SpeechActivityGate.updateSilenceFrames(silence, voice);
+                    if (silence >= 50 || utteranceFrames >= 600) { // 1 s silence / 12 s cap
                         byte[] pcm = utterance.toByteArray();
+                        Log.i(TAG, "hands-free utterance ended: durationMs=" + (pcm.length * 500L / rate)
+                                + ", reason=" + (silence >= 50 ? "silence" : "length-cap"));
                         utterance = null; voiced = 0; silence = 0; utteranceFrames = 0;
                         if (pcm.length >= rate * 2 / 3) transcribeHandsFreePcm(pcm, rate, key);
                         else toJs("onNativeHandsFreeState", "listening");
@@ -1902,9 +1918,15 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 }
             }
         } catch (Exception e) {
-            if (handsFreeRunning) Log.w(TAG, "hands-free loop failed", e);
+            if (captureGeneration == handsFreeCaptureGeneration) Log.w(TAG, "hands-free loop failed", e);
         } finally {
-            stopHandsFreeCapture();
+            // A retired reader must never stop a replacement opened after TTS.
+            main.post(() -> {
+                if (captureGeneration == handsFreeCaptureGeneration) {
+                    stopHandsFreeCapture();
+                    if (handsFreeEnabled && !micPaused) toJs("onNativeHandsFreeState", "unavailable");
+                }
+            });
         }
     }
 
@@ -2194,6 +2216,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
@@ -2217,7 +2240,6 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             web.evaluateJavascript(
                     "try{if(typeof stopRun==='function')stopRun();"
                     + "if(typeof stopMind==='function')stopMind();"
-                    + "if(window.MIND)MIND.motionArmed=false;"
                     + "if(typeof wsSend==='function')wsSend({t:'stop'});}catch(e){}", null);
         }
     }

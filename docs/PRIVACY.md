@@ -29,11 +29,14 @@ Do not enter secrets or private information into search queries. Weather necessa
 ## Camera and facial recognition
 
 - Generic person-presence and face-location processing can run without identifying a person.
+- This community snapshot does not bundle the newer face-embedding backend or weights. Enrollment is unavailable without it; old profiles are not converted into invented new embeddings.
 - Facial recognition defaults off.
 - While recognition is off, OwlBot does not build descriptors, compare stored templates, request a name for recognition, or enroll faces.
 - Turning recognition off preserves existing templates in a dormant state; use Forget all faces to delete them.
 - Face templates are intended to remain local and are not attached to model or search requests.
 - Cloud vision can send a current camera frame to the selected mind provider. Disable Vision to avoid that path; phone-local model code is intentionally not included in the community edition.
+
+Recent conversation and relevant excerpts form the active model context. Older conversation excerpts may be archived in local IndexedDB for retrieval. Context trimming is not memory deletion. Self-improvement defaults off and does not need to be enabled for ordinary memory, replies, or task continuity.
 
 ## Microphone and rest
 

@@ -13,6 +13,8 @@ OwlBot welcomes careful experiments and documentation, but physical robots and p
 
 ```powershell
 pwsh scripts/check-secrets.ps1
+node scripts/validate-source.cjs
+node scripts/test-source.cjs
 .\gradlew.bat clean assembleDebug
 ```
 
