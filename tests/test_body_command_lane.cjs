@@ -1,0 +1,22 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(require('node:path').join(__dirname,'../app/src/main/assets/growbot-brain.html'),'utf8');
+const part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
+const sent=[],box={setTimeout,clearTimeout,Promise,Map,Date,S:{rid:0,pendingAcks:new Map(),recentAcks:new Map(),sim:false,stockRelay:false}};
+box.S.ws={readyState:1,send(raw){const m=JSON.parse(raw);sent.push(m);if(m.t!=='slow'){const p=box.S.pendingAcks.get(m.rid);if(p){clearTimeout(p.timer);box.S.pendingAcks.delete(m.rid);p.resolve({ok:1,rid:m.rid});}}}};
+vm.createContext(box);vm.runInContext(part('function waitBodyAck(','function simMessage('),box);
+vm.runInContext(part('function wsSend(','/* The hardened direct link'),box);
+(async()=>{
+  const slow=box.sendAcknowledgedBodyCommand({t:'slow'},3000);await Promise.resolve();await Promise.resolve();
+  const queued=box.sendAcknowledgedBodyCommand({t:'move'},3000);
+  const stopped=await box.sendAcknowledgedBodyCommand({t:'stop'},3000);
+  assert.equal(stopped.ok,1,'priority stop must not cancel its own waiter');
+  assert.equal((await slow).ok,0);assert.equal((await queued).ok,0);
+  assert.deepEqual(sent.map(m=>m.t),['slow','stop'],'queued movement cannot follow Stop');
+  box.headAcknowledgedCommand=m=>box.sendAcknowledgedBodyCommand({t:'dog_cal',channel_action:'head_move'});
+  const gaze=await box.sendAcknowledgedBodyCommand({t:'gaze'},100);
+  assert.equal(gaze.ok,1,'head routing must not deadlock behind its own outer transaction');
+  const rawSlow=box.sendAcknowledgedBodyCommand({t:'slow'},3000);await Promise.resolve();await Promise.resolve();
+  const rawQueued=box.sendAcknowledgedBodyCommand({t:'move'},3000);box.wsSend({t:'stop'});
+  assert.equal((await rawSlow).ok,0);assert.equal((await rawQueued).ok,0);
+  console.log('PASS actual command lane and wsSend: priority/raw Stop, no late motion, nested head routing.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

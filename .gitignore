@@ -55,3 +55,22 @@ Thumbs.db
 # Laptop bridge runtime-only calibration and control material
 tools/laptop-maestro-bridge/*.local.json
 tools/laptop-maestro-bridge/*.token
+
+# Never publish live-agent state, diagnostics, or recovery exports
+backups/
+audits/
+captures/
+screenshots/
+ui-review*/
+.audit-key
+*.token
+*.tar
+*.tar.gz
+*.zip
+*.dmp
+*.dump
+*.wav
+*.mp3
+*.mp4
+*.uf2
+*.local.json

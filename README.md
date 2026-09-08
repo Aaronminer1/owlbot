@@ -54,7 +54,7 @@ OpenAI and Codex are credited for development assistance only. OwlBot is an inde
 
 ## What OwlBot does
 
-The current source snapshot is Android app version **5.7-community** (`versionCode 50`). It carries the current OwlBot behavior while preserving the audited community edition's exclusion of the private local-model runtime and unofficial neural-voice transport. Its major systems are:
+The current source snapshot is Android app version **7.12-community** (`versionCode 165`). This is a source-only community update, not the private development APK. It preserves the exclusion of private model runtimes/downloaders, model weights, unofficial neural-voice transport, and live-agent data. See [the update notes](docs/UPDATE-7.12.md) for changes and validation limits. Its major systems are:
 
 - An animated, expressive face rendered in an embedded HTML/Canvas interface.
 - A priority-based contextual expression resolver covering protection, danger, listening, thinking, speaking, success, frustration, uncertainty, relief, affection, play, focus, boredom, and reasoned model appraisal. Automatic failure produces confusion/focus rather than invented anger; anger requires an explicit current model appraisal with a concrete reason.
@@ -67,8 +67,8 @@ The current source snapshot is Android app version **5.7-community** (`versionCo
 - An attention governor that suppresses repetitive low-novelty sensor commentary and redirects curiosity toward useful observations, experiments, and the person.
 - Phone sensor integration: acceleration, gravity, gyroscope, orientation, light, pressure, proximity, steps, battery, thermal state, and location when permission is granted.
 - A global thermal governor that sheds camera/render/sensor load at moderate heat and stops model, body, microphone, GPS, and continuous sensors at severe heat until a sustained cooldown, with a distinct animated cooling face.
-- Camera perception, optical flow, generic person presence, and optional local facial recognition.
-- Facial recognition that defaults off, can be toggled at any time, and keeps face templates on the phone.
+- Camera perception, optical flow, generic person presence, and a consent-first identity pipeline. The new face-embedding backend/weights are not bundled in the community edition; enrollment is disabled without that backend, and saved profiles remain local and removable.
+- Face-identity state that defaults off and never treats a model's guess as a verified person.
 - A rest mode that closes the eyes, shows sleeping animation, stops the mind and body, and disables camera/microphone transmission until touch wakes OwlBot.
 - Cloud vision through the model provider selected by the user. Separately licensed local-model weights and download code are intentionally excluded from the community build.
 - Live web research, Google News headlines, Open-Meteo weather, and source-aware tool results.
@@ -131,7 +131,7 @@ Local-model weights are not bundled or automatically downloaded by the community
 
 ## Thermal and physical cooling
 
-OwlBot's screen, camera, WebView, sensors, charging circuit, and radio all share a small phone enclosure. Version 5.7-community reduces software load automatically, but sustained robot use can still benefit from active airflow. If adding a fan:
+OwlBot's screen, camera, WebView, sensors, charging circuit, and radio all share a small phone enclosure. The community build reduces software load automatically, but sustained robot use can still benefit from active airflow. If adding a fan:
 
 - power it from a separate regulated supply rather than the phone battery or servo rail;
 - aim airflow across the rear frame/battery area without letting blades, screws, or conductive guards touch exposed phone electronics;
@@ -192,9 +192,9 @@ Debug builds use Android’s standard debug certificate. The release build is in
 OwlBot ships with **no API key**.
 
 1. Open OwlBot’s Controls screen.
-2. Choose `Ollama Cloud`, `Ollama local`, or a compatible custom endpoint.
+2. Choose `Ollama Cloud`, `Local Ollama server`, `Local models — OwlBot Tower`, or a compatible custom endpoint.
 3. Enter your own endpoint and, if required, your own API key.
-4. Refresh the model list and choose a model with the capabilities you want.
+4. Use `Discover models`, then select brain and vision models. Use `Test model connection` for a short text/generated-image test; it does not send your memories or camera photos.
 5. Return to the face to wake the mind.
 
 The Android app stores the model key and optional hardened body token using Android Keystore-backed AES-GCM encrypted storage. They are not kept in the HTML preferences object and are not present in this repository.
@@ -273,6 +273,8 @@ Before opening a pull request:
 
 ```powershell
 pwsh scripts/check-secrets.ps1
+node scripts/validate-source.cjs
+node scripts/test-source.cjs
 .\gradlew.bat clean assembleDebug
 ```
 

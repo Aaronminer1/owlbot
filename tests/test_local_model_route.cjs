@@ -1,0 +1,16 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-brain.html'),'utf8');
+const elements={mProvider:{value:'tower-local'},mBase:{value:'http://192.168.50.2:11434/v1'},mKey:{value:'FAKE_TEST_ONLY'}};
+const box={URL,$:s=>elements[s.slice(1)],PROVIDERS:{'tower-local':{localOnly:true},'ollama-cloud':{}}};vm.createContext(box);
+vm.runInContext(html.slice(html.indexOf('function isCloudBackedModel('),html.indexOf('/* One shared request budget')),box);
+assert.equal(box.isCloudBackedModel('glm-5.2:cloud'),true);assert.equal(box.isCloudBackedModel('gpt-oss:120b-cloud'),true);assert.equal(box.isCloudBackedModel('gemma4:12b'),false);
+for(const u of ['http://192.168.50.2:11434/v1','http://192.168.1.2/v1','http://172.16.0.2/v1','http://localhost:11434/v1'])assert.equal(box.isLocalModelUrl(u),true,u);
+for(const u of ['https://ollama.com/v1','https://10.example.com/v1','https://192.168.50.2.example.com/v1','http://user:secret@192.168.50.2/v1','http://172.32.0.2/v1'])assert.equal(box.isLocalModelUrl(u),false,u);
+assert.equal('Authorization' in box.mindHeaders(),false);
+elements.mBase.value='https://ollama.com/v1';assert.throws(()=>box.mindHeaders(),/local network/);
+elements.mProvider.value='ollama-cloud';assert.equal(box.mindHeaders().Authorization,'Bearer FAKE_TEST_ONLY');
+vm.runInContext(html.slice(html.indexOf('function modelRateError('),html.indexOf('function waitWithSignal(')),box);
+assert.equal(box.modelRateError('budget',3000,'scheduler').limitSource,'scheduler');
+assert.equal(box.modelRateError('429',3000).limitSource,'provider');
+assert.match(html,/Selected provider only \(tower or cloud\)/);
+console.log('PASS: local route validation, cloud-backed IDs excluded, no local Authorization header, distinct scheduler/provider messages.');

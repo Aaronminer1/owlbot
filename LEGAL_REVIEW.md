@@ -15,6 +15,7 @@ OwlBot is distributed for noncommercial purposes under PolyForm Noncommercial 1.
 - The prototype body is the smaller `CAD/dog02_9g.stp` variant from James Bruton's YouCanBuildDog project. No CAD or upstream body source is included here. Its MIT notice is preserved in `LICENSES/YouCanBuildDog-MIT.txt` for attribution.
 - The repository contains no GrowBot firmware, policy weights, CAD, artwork, website assets, or trained checkpoints.
 - The 5.7-community update was merged against the audited 4.1 community tree rather than copied wholesale from the private phone build. The local-model runtime, automatic model downloader, unofficial Microsoft Edge Read Aloud transport, and their implementation files remain excluded. Continuous conversation relies on Android's system speech service and adds no vendored runtime dependency.
+- The 7.12-community export preserves these exclusions and the existing package namespace, dependency list, license and notices. It adds reviewed source modules and synthetic regression tests, not device backups or private audit reports. The new native face-embedding backend and its weights are also excluded; corresponding unavailable capabilities are not advertised as working. This update does not constitute a new legal opinion or review of excluded model terms.
 
 ## Deliberately excluded
 

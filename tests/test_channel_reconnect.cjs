@@ -1,0 +1,15 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-brain.html'),'utf8');
+let reads=0,ready=true;const tasks=[];
+const box={APP:{settings:true},S:{sim:false},CHANNEL_SETUP:{generation:1,loaded:false,loading:false,live:false,busy:false,drafts:{5:{name:'Right front leg'}}},bodyControllerReady:()=>ready,setTimeout:fn=>tasks.push(fn),loadControllerChannels:()=>reads++};
+vm.createContext(box);vm.runInContext(html.slice(html.indexOf('function queueChannelSettingsRefresh(){'),html.indexOf('async function stopChannelAdjustment(')),box);
+const drafts=JSON.stringify(box.CHANNEL_SETUP.drafts);
+for(let i=0;i<10;i++)box.queueChannelSettingsRefresh();
+assert.equal(tasks.length,1);tasks.shift()();assert.equal(reads,1);
+box.queueChannelSettingsRefresh();assert.equal(tasks.length,0,'failed read does not create a retry storm');
+box.CHANNEL_SETUP.generation++;box.queueChannelSettingsRefresh();ready=false;tasks.shift()();assert.equal(reads,1,'disconnect cancels pending read');
+ready=true;box.CHANNEL_SETUP.generation++;box.CHANNEL_SETUP.live=true;box.queueChannelSettingsRefresh();assert.equal(tasks.length,0);
+box.CHANNEL_SETUP.live=false;box.queueChannelSettingsRefresh();box.CHANNEL_SETUP.generation++;tasks.shift()();assert.equal(reads,1,'obsolete connection cannot load');
+box.queueChannelSettingsRefresh();tasks.shift()();assert.equal(reads,2);
+assert.equal(JSON.stringify(box.CHANNEL_SETUP.drafts),drafts);assert.equal(box.CHANNEL_SETUP.live,false);
+console.log('PASS: one read per reconnect, no retry storm, preserves drafts, no movement or stale reads.');
