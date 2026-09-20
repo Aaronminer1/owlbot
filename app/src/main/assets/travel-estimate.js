@@ -1,4 +1,7 @@
-/* Measured cycle-to-distance calibration. No motor commands or image-depth guesses. */
+/* Owner-measured cycle-to-distance estimates, not camera depth/localization.
+ * Match samples to saved gait, speed, direction and surface; slipping can make
+ * identical controller cycles travel different distances. A predicted cycle
+ * count never grants motor permission or proves the destination was reached. */
 function travelPlanSignature(plan){
   if(!plan||!Array.isArray(plan.steps)||!plan.steps.length)return null;
   return JSON.stringify({version:plan.version,lift:plan.lift_percent??50,paired:plan.paired_feet??true,

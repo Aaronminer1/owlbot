@@ -1,4 +1,8 @@
-/* Independent ESP32 head transport. Never shares a socket or ACK map with Pico. */
+/* Gaze adapter: routes to the main Pico or an independent ESP32 head.
+ * The separate head never shares a socket/ACK map with the body. Generation
+ * changes invalidate old requests after Stop or reconnect. Semantic direction
+ * inversion belongs here, not in the owner's saved electrical pulse limits.
+ * Head movement stays slow even when the body's gait pace is fast. */
 const HEAD={ws:null,ready:false,lastSeen:0,lastSent:0,rid:0,pending:new Map(),state:null,generation:0,manual:false,retryAt:0,disconnects:0,lastDisconnectReason:'',events:[],heartbeatPending:false};
 function headEvent(reason){
   HEAD.lastDisconnectReason=reason;HEAD.events.push({time:Date.now(),reason});

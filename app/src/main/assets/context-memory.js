@@ -1,4 +1,9 @@
-/* Local episodic archive and selective recall. Never uploaded wholesale. */
+/* Local IndexedDB archive plus bounded retrieval for the current question.
+ * Storage success precedes pruning; an archive error must not silently erase
+ * the only copy of a conversation. Retrieval adds source/time labels because
+ * old replies, human reports and present camera evidence are different facts.
+ * Relevant excerpts may enter a configured model request; the archive itself
+ * is not uploaded wholesale. See docs/PRIVACY.md for provider boundaries. */
 const CONTEXT_MEMORY={db:null,opening:null,error:'',workingError:'',saved:0};
 function memoryArchiveOpen(){
   if(CONTEXT_MEMORY.db)return Promise.resolve(CONTEXT_MEMORY.db);

@@ -107,14 +107,15 @@ import org.xmlpull.v1.XmlPullParser;
  * entirely, and it also means the app works with no internet at all - which is
  * the point of the direct transport.
  *
- * The Java side exists to supply the four things a WebView cannot do itself:
+ * The Java side supplies capabilities that WebView alone cannot reliably own:
  *   - runtime camera/mic permission, and the WebView-level grant that follows it
  *   - text to speech (Android WebView has no Web Speech synthesis)
  *   - speech recognition (likewise)
  *   - keeping the screen on and the phone awake while the creature is running
  *
- * Everything else stays in the page, so the same file runs unchanged in a
- * desktop browser.
+ * It also owns native sensors, Keystore storage, app intents and service
+ * adapters. Most decision/UI logic stays in the page; a desktop browser does
+ * not provide the same capabilities when OwlBotNative is absent.
  */
 public class MainActivity extends Activity implements SensorEventListener, LocationListener {
 
@@ -175,6 +176,8 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private PermissionRequest pendingWebRequest;
     private boolean pendingSpeechListen = false;
 
+    // Only named credential slots are exposed to the bundled page. Values are
+    // supplied on the device, never compiled into this host or Gradle config.
     private String checkedSecretName(String name) {
         if ("mind_api".equals(name) || "voice_api".equals(name)
                 || "body_control".equals(name) || "head_control".equals(name)) return name;
@@ -199,6 +202,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         return generator.generateKey();
     }
 
+    // Persist IV + authenticated ciphertext; the AES key stays in Android
+    // Keystore. This protects storage, not a compromised running WebView: the
+    // trusted page can still request plaintext for an authorized network call.
+    // Diagnostics intentionally log slot/error type, never the supplied value.
     private synchronized boolean saveSecretValue(String name, String value) {
         String key = checkedSecretName(name);
         if (key == null) return false;
@@ -287,6 +294,9 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 (getApplicationInfo().flags
                         & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
 
+        // The native bridge is privileged. Navigation stays on the exact bundled
+        // page; this does not remove the prototype's permissive LAN/network
+        // access above. Review both boundaries before any production deployment.
         web.setWebViewClient(new WebViewClient() {
             private boolean allowed(String url) {
                 return PAGE.equals(url);

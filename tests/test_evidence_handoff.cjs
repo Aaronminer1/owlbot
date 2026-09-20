@@ -2,7 +2,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-brain.html'),'utf8');
 const part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
 const prompts=[];
-const box={Date,JSON,String,Number,Math,identityEnrollmentActive:()=>false,S:{cameraFacing:'front'},MIND:{visionReportFacing:'front'},LOCAL_VISION:{status:{thermalStatus:0}},
+const box={Date,JSON,String,Number,Math,cameraGeneration:0,identityEnrollmentActive:()=>false,S:{cameraFacing:'front'},MIND:{visionReportFacing:'front'},LOCAL_VISION:{status:{thermalStatus:0}},
  cachedVisionReport:()=> 'An open yellow bucket contains tools.',localVisionRoute:()=> 'local',localVisionReady:()=>true,
  localVisionInfer:async(img,prompt)=>{prompts.push(prompt);return {text:'CHANGE: UNCERTAIN A yellow capped jug is visible. Its contents are hidden. FOCUS: 0,0,jug',backend:'gpu',latencyMs:1500};},
  log:()=>{},inquiryObserve:(report,at,facing)=>{box.observation={report,at,facing};},visualAttentionFromReport:()=>{}};
@@ -10,7 +10,7 @@ vm.createContext(box);
 vm.runInContext(part('function freshInvestigationPrompt(','function perceptionTerms('),box);
 vm.runInContext(part('function executiveOutcomeFallback(','function unexecutedMovementPromise('),box);
 (async()=>{
- const cameraBox={MIND:{vision:false,oneShotVision:false},String,enableCamera:async()=>true,mindLog:()=>{}};
+ const cameraBox={MIND:{vision:false,oneShotVision:false},String,navigationCameraFacing:()=>null,enableCamera:async()=>true,mindLog:()=>{}};
  vm.createContext(cameraBox);
  vm.runInContext('async function cameraTool(name,args){'+part('    if(name==="use_camera"){','    if(name==="look_at"){')+'}',cameraBox);
  assert.match(await cameraBox.cameraTool('use_camera',{facing:'front'}),/not visual evidence/);

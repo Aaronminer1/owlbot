@@ -1,6 +1,6 @@
 # OwlBot architecture
 
-This document describes the Android OwlBot 7.12-community source snapshot. It is an implementation guide, not a safety or production-readiness claim.
+This document describes the Android OwlBot 7.15-community source snapshot. It is an implementation guide, not a safety or production-readiness claim. For source entry points, state ownership, cancellation and test links, use the [code review guide](REVIEW-GUIDE.md).
 
 ## Runtime boundaries
 

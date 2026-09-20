@@ -1,5 +1,9 @@
-/* Consent-first, local SFace identity. Names are not face verification.
- * Transient descriptors are never put into conversation/model context. */
+/* Consent-first identity state machine, not a vision-model name guess.
+ * The community host omits the SFace backend/weights: the UI below disables
+ * enrollment without it. Existing local profiles can still be forgotten.
+ * If a reviewed backend is added, consent, one-face quality checks, generation
+ * cancellation and independent matching remain required. Never put transient
+ * descriptors into conversation/model context. See docs/REVIEW-GUIDE.md. */
 const FACE_MEMORY_KEY='owlbot_face_memory_v4',FACE_RECOGNITION_KEY='owlbot_face_recognition_enabled_v1';
 const FACE_ENGINE='sface-2021dec-v1';
 const IDENT={enabled:false,profiles:[],legacyCount:0,currentId:null,currentName:null,currentConfidence:0,

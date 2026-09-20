@@ -54,7 +54,7 @@ OpenAI and Codex are credited for development assistance only. OwlBot is an inde
 
 ## What OwlBot does
 
-The current source snapshot is Android app version **7.12-community** (`versionCode 165`). This is a source-only community update, not the private development APK. It preserves the exclusion of private model runtimes/downloaders, model weights, unofficial neural-voice transport, and live-agent data. See [the update notes](docs/UPDATE-7.12.md) for changes and validation limits. Its major systems are:
+The current source snapshot is Android app version **7.15-community** (`versionCode 168`). This is a source-only community update, not the private development APK. It preserves the exclusion of private model runtimes/downloaders, model weights, unofficial neural-voice transport, and live-agent data. See [the update notes](docs/UPDATE-7.15.md) for changes and validation limits. **Reviewers: start with the [code review guide](docs/REVIEW-GUIDE.md)** for module ownership, walking/camera flows, test coverage and known limitations. Its major systems are:
 
 - An animated, expressive face rendered in an embedded HTML/Canvas interface.
 - A priority-based contextual expression resolver covering protection, danger, listening, thinking, speaking, success, frustration, uncertainty, relief, affection, play, focus, boredom, and reasoned model appraisal. Automatic failure produces confusion/focus rather than invented anger; anger requires an explicit current model appraisal with a concrete reason.
@@ -269,7 +269,7 @@ Face descriptors, memories, and encrypted credentials are stored locally by this
 
 ## Development and verification
 
-Before opening a pull request:
+Before opening a pull request (Node.js and PowerShell 7 / `pwsh` are required for the source tests; Java 21 and Android SDK 34 for the APK):
 
 ```powershell
 pwsh scripts/check-secrets.ps1
@@ -277,6 +277,11 @@ node scripts/validate-source.cjs
 node scripts/test-source.cjs
 .\gradlew.bat clean assembleDebug
 ```
+
+The secret guard examines working files **and staged contents**, reports only
+file/rule names, and rejects private/runtime paths already in the index.
+Before publishing, also scan the full Git history and the exact candidate tree
+with a dedicated scanner; see [the publication checklist](docs/REVIEW-GUIDE.md#publication-and-secret-review).
 
 At minimum, verify:
 

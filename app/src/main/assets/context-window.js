@@ -1,4 +1,8 @@
-/* Local context compiler. No network, storage, model calls, or robot commands. */
+/* Pure request compiler; no network, persistence or physical side effects.
+ * Budget the complete request (including tool schemas), reserve output, then
+ * compact eligible history without breaking tool-call/result pairs. The
+ * default window is a fallback, not the maximum supported provider window.
+ * Estimates are conservative byte-based approximations, not tokenizer truth. */
 (function(root){
   'use strict';
   const DEFAULT_WINDOW=16384;

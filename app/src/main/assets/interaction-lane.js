@@ -1,4 +1,8 @@
-/* Conversation ownership and delivery bookkeeping. Never sends motor commands. */
+/* Human-input priority and delivery bookkeeping; never sends motor commands.
+ * A user turn interrupts competing background inference, retains its message
+ * during bounded network retries, and waits for human speech before playback.
+ * Once a tool has side effects, retrying the whole turn could move twice: fail
+ * visibly instead. The UI delivery history is not an action replay queue. */
 function humanConversationOwnsResources(){
   if(typeof identityEnrollmentActive==='function'&&identityEnrollmentActive())return true;
   // Active locomotion also owns inference; conversation can still enter its user lane.
