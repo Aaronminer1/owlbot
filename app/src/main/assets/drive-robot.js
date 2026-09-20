@@ -1,4 +1,9 @@
-/* Direct human controls; no model requests and no legacy fixed-role gait. */
+/* Calibrated manual controls plus the turn primitive used by navigation.
+ * No model requests and no legacy fixed-role gait. Electrical A/B endpoints
+ * are not inherently left/right; the owner teaches their physical meaning.
+ * Navigation passes sessionGuard so cancellation survives asynchronous info,
+ * turn and completion calls. Manual Controls are a separate supported-test
+ * surface; do not confuse them with autonomous motor permission. */
 const DRIVE_ROBOT={busy:false,generation:0,channelSignature:''};
 function cancelDriveRobot(){
   DRIVE_ROBOT.generation++;
@@ -51,10 +56,14 @@ function renderDriveRobot(){
   $('#turnAPhysical').disabled=busy;
 }
 async function runDriveTurn(direction,options={}){
+  // fraction scales a taught turn; it is not a measured yaw angle. Small
+  // corrections therefore require a new camera check before forward travel.
+  if(typeof WALK_STREAM!=='undefined'&&WALK_STREAM.session?.active&&!options.sessionGuard)throw Error('The navigation session owns movement; stop it before a separate turn.');
   if(!['left','right','a','b'].includes(direction))throw Error('Unknown turn direction');
   const fraction=options.fraction??1;
   if(typeof fraction!=='number'||!Number.isFinite(fraction)||fraction<.02||fraction>1)throw Error('Choose a turn fraction from 0.02 to 1.');
   const observed=$('#turnAPhysical').value;
+  if(options.sessionGuard&&['left','right'].includes(direction)&&!['left','right'].includes(observed))throw Error('Identify the physical Turn A direction before navigation turns.');
   const pattern=['a','b'].includes(direction)?direction:observed?(direction===observed?'a':'b'):(direction==='left'?'a':'b');
   const generation=CHANNEL_SETUP.generation;
   const guard=()=>{if(options.sessionGuard)options.sessionGuard();if(generation!==CHANNEL_SETUP.generation||!bodyControllerReady())throw Error('Turn interrupted by Stop or connection change.');};
@@ -67,6 +76,7 @@ async function runDriveTurn(direction,options={}){
   if(CHANNEL_SETUP.drafts[target.channel])throw Error('Save or discard edits for this Turn channel first.');
   const c=info.channel_state.channels.find(c=>c.channel===target.channel);
   const binding=Object.fromEntries(['name','a_name','b_name','a_us','b_us','center_us'].map(k=>[k,c[k]]));
+  guard();if(options.beforeStart)options.beforeStart();
   const ack=await channelCommand('turn_run',{turn_channel:c.channel,binding,pattern,...(fraction!==1?{fraction}:{})});
   const runId=ack.named_turn?.run_id;
   if(!runId)throw Error('Pico did not confirm a Turn cycle.');

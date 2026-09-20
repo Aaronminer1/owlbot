@@ -1,4 +1,7 @@
-/* Companionship uses the existing mind scheduler, never a reflection worker. */
+/* Quiet-time companionship uses the existing mind scheduler, not a second LLM
+ * loop. Yield to human speech, queued replies and locomotion. This path is
+ * speech-only: it must not acquire cameras or promise unexecuted movements.
+ * Missing recent interaction is not evidence that somebody left or is unsafe. */
 const SOCIAL_INITIATIVE={enabled:localStorage.getItem('owlbot_social_initiative_v1')!=='off'};
 function socialInitiativeEnabled(){return SOCIAL_INITIATIVE.enabled;}
 function renderSocialInitiative(){

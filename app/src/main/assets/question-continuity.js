@@ -1,4 +1,7 @@
-/* Bounded, local question/answer continuity. No timers, model calls or visual claims. */
+/* Bounded question/answer continuity; no timers, inference or visual claims.
+ * Preserve attributed human answers so paraphrasing the same question does
+ * not restart an investigation. Matching intentionally uses a narrow subject
+ * and intent vocabulary; it is not universal semantic identity resolution. */
 const OwlQuestions={
   clean(text){return String(text||'').toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9' ]/g,' ').replace(/\s+/g,' ').trim();},
   questions(text){return (String(text||'').match(/[^.!?]*\?/g)||[]).map(s=>s.trim()).filter(Boolean);},

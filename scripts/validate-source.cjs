@@ -9,4 +9,13 @@ assert(!html.includes('<option value="phone-local">'),'community build must not 
 assert(html.includes('engine: "device"'));
 assert(!fs.existsSync(path.join(dir,'face_models')));
 assert(!fs.existsSync(path.join(dir,'phone-brain.js')));
+// Exporting private-source updates must not silently re-enable controls for a
+// native embedding backend that this public host deliberately does not bundle.
+const faces=fs.readFileSync(path.join(dir,'face-identity.js'),'utf8');
+assert(faces.includes('toggle.disabled=!engineAvailable&&!IDENT.enabled'));
+assert(faces.includes('enroll.disabled=!IDENT.enabled||!engineAvailable'));
+for(const file of fs.readdirSync(path.join(root,'tests')).filter(n=>/^test_.*\.cjs$/.test(n))){
+ const source=fs.readFileSync(path.join(root,'tests',file),'utf8');
+ assert(!/backups\/\d{4}-\d{2}-\d{2}|andrew_provider_update|adb\.exe|localhost:9222/.test(source),'Tests must not depend on private exports or drive devices: '+file);
+}
 console.log('PASS: all bundled scripts parse and community publication boundaries remain intact.');

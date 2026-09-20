@@ -1,4 +1,8 @@
-/* Owner-controlled token spending. Ordinary memory and curiosity stay separate. */
+/* Owner-controlled reflection budget, OFF unless explicitly persisted as on.
+ * Turning it off cancels registered improvement work and parks those tasks;
+ * it does not disable memory, conversation, companionship or walking vision.
+ * Generation changes let async callers reject results produced before a toggle.
+ * Task intent classification is heuristic, not a general-purpose security gate. */
 const SELF_IMPROVEMENT={enabled:localStorage.getItem('owlbot_self_improvement_v1')==='on',generation:0,controllers:new Set()};
 function selfImprovementEnabled(){return SELF_IMPROVEMENT.enabled;}
 function isSelfImprovementWork(item){

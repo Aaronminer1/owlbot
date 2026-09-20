@@ -17,6 +17,13 @@ function setup(){
 }
 (async()=>{
   {
+    const {box,calls}=setup();box.MIND={motionArmed:false};box.recordActionOutcome=()=>assert.fail('Motor-off maintenance must stay quiet');
+    vm.runInContext(part('let bodyMaintenanceBusy=', 'const isDog6 ='),box);
+    await box.autonomousBodyMaintenance();assert.equal(calls.probes,0);assert.equal(calls.connects,0);
+    assert.equal(box.bodyRecoverySuspended(),true);
+    box.MIND.motionArmed=true;assert.equal(box.bodyRecoverySuspended(),false,'owner may restore body capability');
+  }
+  {
     const {box,calls}=setup();let release;
     box.probeBodyController=()=>{calls.probes++;return calls.probes===1?new Promise(r=>release=r):Promise.resolve({ok:true});};
     const a=box.repairBodyRuntime('preflight'),b=box.repairBodyRuntime('maintenance');

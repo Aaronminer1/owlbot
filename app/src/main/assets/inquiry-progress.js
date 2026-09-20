@@ -1,4 +1,8 @@
-/* Evidence and continuity only. Never sends a movement command. */
+/* Evidence ledger for curiosity, not another movement executor. A finding must
+ * cite a recent report ID and an exact excerpt; interpretation stays separate.
+ * Repeated unchanged views and accepted controller commands do not count as
+ * new discoveries. These are model observations, not measured localization.
+ * Only the foreground tool/movement layers may act on the retained question. */
 const INQUIRY_KEY='owlbot_inquiry_progress_v1';
 const INQUIRY={evidence:[],unchangedViews:0,failedActions:0,lastAction:null};
 function inquiryLoad(){
