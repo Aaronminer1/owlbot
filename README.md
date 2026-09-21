@@ -54,7 +54,7 @@ OpenAI and Codex are credited for development assistance only. OwlBot is an inde
 
 ## What OwlBot does
 
-The current source snapshot is Android app version **7.15-community** (`versionCode 168`). This is a source-only community update, not the private development APK. It preserves the exclusion of private model runtimes/downloaders, model weights, unofficial neural-voice transport, and live-agent data. See [the update notes](docs/UPDATE-7.15.md) for changes and validation limits. **Reviewers: start with the [code review guide](docs/REVIEW-GUIDE.md)** for module ownership, walking/camera flows, test coverage and known limitations. Its major systems are:
+The current source snapshot is Android app **7.23-community** (`versionCode 176`) with separately versioned **Pico firmware 7.14**. This is a source release, not the private development APK. Private model runtimes/downloaders, weights, unofficial neural-voice transport and live-agent data remain excluded. See [the update notes](docs/UPDATE-7.23.md). **Reviewers: start with the [code review guide](docs/REVIEW-GUIDE.md)** and [Pico controller guide](docs/PICO-CONTROLLER.md). Its major systems are:
 
 - An animated, expressive face rendered in an embedded HTML/Canvas interface.
 - A priority-based contextual expression resolver covering protection, danger, listening, thinking, speaking, success, frustration, uncertainty, relief, affection, play, focus, boredom, and reasoned model appraisal. Automatic failure produces confusion/focus rather than invented anger; anger requires an explicit current model appraisal with a concrete reason.
@@ -74,6 +74,16 @@ The current source snapshot is Android app version **7.15-community** (`versionC
 - Live web research, Google News headlines, Open-Meteo weather, and source-aware tool results.
 - Owner-visible phone actions such as finding/opening installed apps, handing music requests to Pandora, media controls, and opening an email draft for review. OwlBot does not silently send email.
 - Local MIDI synthesis for short scores transcribed from visible sheet music.
+- Complete offline Für Elise piano/synthesized humming, bounded hum matching,
+  new compositions and a local songbook. Playback status, not a model's promise,
+  determines whether music actually started or finished.
+- Twelve complete child-friendly story retellings plus their twelve historical
+  editions with attribution/content notes. Talk-button questions pause narration;
+  resumption waits for permission and retains the interrupted sentence.
+- Sensor freshness/accuracy and nonvisual context, without claiming camera
+  clearance or measured displacement from unrelated sensor readings.
+- Reviewed shared Pico source for calibrated walking, turning, slow head control,
+  optional head holding and link recovery. Owner-specific calibration is not shipped.
 - GrowBot body control through the stock pairing-code relay without a separate control token.
 - A hardened direct-body protocol option for experimental controllers that implement token authentication.
 - A `quad8` mode that sends bounded walk, turn, gaze, rest, and stop intentions while the body controller owns every eight-joint sequence.

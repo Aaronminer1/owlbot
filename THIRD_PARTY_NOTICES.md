@@ -29,7 +29,26 @@ GrowBot software may be used, changed, and shared for permitted noncommercial pu
 
 The MIT License permits use, copying, modification, merging, publication, distribution, sublicensing, and sale, provided the copyright and permission notice are included in copies or substantial portions. The OwlBot prototype is based on the smaller 9 g mechanical body while substituting its own phone, controller, experimental control stack, and additional actuation; the pictured assembly has eight servos.
 
-## Android and model dependencies
+## Newly included Pico adaptation and media
+
+The `firmware/pico` source adapts GrowBot's relay/driver protocol and OwlBot's
+body sequencing. It is not official GrowBot firmware. The existing GrowBot
+PolyForm license/credit and James Bruton's MIT notice are retained; no upstream
+policy weights, MicroPython binary, private calibration or credentials are shipped.
+
+Für Elise uses the public-domain typesetting by Stelios Samelis, Mutopia ID 931,
+based on Breitkopf & Härtel (1888). Source and dedication:
+https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=931 .
+The included LilyPond source retains attribution; MIDI unfolds written repeats.
+
+The story library contains selected complete historical texts and separately
+labeled OwlBot retellings. Edition/author/credit links and the Project Gutenberg
+license are in `app/src/main/assets/stories`; each library entry includes its
+source, edition and content note. Project Gutenberg identifies the source
+editions as public domain in the USA; check local law elsewhere. No illustrations,
+modern copyrighted translations, recorded voices or recordings are included.
+
+## Android and model dependencies (unchanged)
 
 Android Gradle tooling, Google ML Kit, model providers, Android speech engines, and other services retain their respective licenses and service terms. Build dependencies are resolved from upstream repositories and are not vendored here. LiteRT-LM, Gemma weights, and the unofficial Microsoft Edge Read Aloud transport are intentionally absent from the community edition.
 

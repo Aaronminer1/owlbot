@@ -6,6 +6,8 @@ for(const m of html.matchAll(/<script src="([^"]+)"/g)){assert(/^[a-z-]+\.js$/.t
 const native=fs.readFileSync(path.join(root,'app/src/main/java/dev/owlbot/brain/MainActivity.java'),'utf8');
 assert(!/LocalVisionEngine|LocalFaceEngine|EdgeTts|speakNeural/.test(native),'excluded native integrations must not be published');
 assert(!html.includes('<option value="phone-local">'),'community build must not advertise an unavailable phone brain');
+assert(!/id="walkVisionRoute"[^]*?<\/select>/.exec(html)?.[0].includes('value="local"'),'walking must not offer the excluded on-phone runtime');
+assert(native.includes('public void speakTagged('),'story playback requires tagged device-TTS completion');
 assert(html.includes('engine: "device"'));
 assert(!fs.existsSync(path.join(dir,'face_models')));
 assert(!fs.existsSync(path.join(dir,'phone-brain.js')));

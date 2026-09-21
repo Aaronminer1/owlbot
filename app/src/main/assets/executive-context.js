@@ -12,8 +12,9 @@ function executiveTools(query,conversation=false){
   const names=new Set(['recall','remember','inspect_capabilities','load_tools']);
   const q=typeof movementIntentText==='function'?movementIntentText(query):String(query||'');
   const embodied=MIND.autonomyTurn||MIND.perceptionTurn||
-    /\b(?:walk|move|turn|drive|direction|body|camera|look|see|watch|path|route|floor|obstacle|wall|door|stairs?|ledge|drop|explor\w*|around|ahead|behind|left|right|forward|backward)\b/i.test(q);
+    /\b(?:walk(?:ing|s|ed)?|mov(?:e|es|ed|ing)|turn(?:ing|s|ed)?|driv(?:e|es|ing)|direction|body|camera|look|see|watch|path|route|floor|obstacle|wall|door|stairs?|ledge|drop|explor\w*|around|ahead|behind|left|right|forward|backward)\b/i.test(q);
   if(embodied)['use_camera','look_at','move','start_walking','stop_walking','stop','read_sensors'].forEach(n=>names.add(n));
+  if(/\b(?:sensors?|brightness|tilt|balance|shaking|carried|battery|temperature|compass|pressure|proximity)\b/i.test(q))names.add('read_sensors');
   if(MIND.autonomyTurn||MIND.perceptionTurn||/\b(?:explor\w*|curious|goal|mission|on your own)\b/i.test(q)){
     ['open_curiosity','update_curiosity','speak'].forEach(n=>names.add(n));
     const mission=activePersonalMission(),task=activeOwnerTask()||activeSelfTask();
@@ -26,8 +27,10 @@ function executiveTools(query,conversation=false){
     ['list_servo_channels','move_named_servos','diagnose_body','repair_body','set_motor_control'].forEach(n=>names.add(n));
   if(/\b(?:news|weather|forecast|search|look up|research)\b/i.test(q))
     ['search_web','search_news','get_weather'].forEach(n=>names.add(n));
-  if(/\b(?:music|midi|song|tune|compose|hum|play)\b/i.test(q))
-    ['play_midi','stop_midi','delegate_background_task'].forEach(n=>names.add(n));
+  if(/\b(?:music|musical|midi|songs?|tunes?|compos\w*|pieces?|improvise|hum|play|piano|songbook)\b/i.test(q))
+    ['play_midi','stop_midi','list_compositions','delegate_background_task'].forEach(n=>names.add(n));
+  if(/\b(?:stor(?:y|ies)|bedtime|read|reading|fairy tale|goldilocks|rabbit|three little pigs)\b/i.test(q))
+    ['list_stories','read_story','pause_story'].forEach(n=>names.add(n));
   if(/\b(?:distance|feet|foot|meters?|metres?|how many cycles)\b/i.test(q))names.add('estimate_travel');
   if(/\b(?:continuous|start walking|keep walking|stop walking|until.*stop)\b/i.test(q))['start_walking','stop_walking'].forEach(n=>names.add(n));
   for(const n of EXTRA_TURN_TOOLS)names.add(n);
@@ -58,10 +61,12 @@ function embodiedSituation(){
       source:BEING.embodiment.assemblySource,updated:BEING.embodiment.updated,
       evidence:OwlContext.clip(BEING.embodiment.assemblyEvidence,240)},
     camera:{selected:S.cameraFacing,live:S.camOK,forward:forward||'not configured',
+      walkingVision:typeof walkingVisionRoute==='function'?walkingVisionRoute():'main vision setting',
       backward:forward?(forward==='front'?'back':'front'):'not configured',
       reportAgeMs:reportAge,reportFacing:MIND.visionReportFacing,
       reportFresh:reportAge!==null&&reportAge<12000,headCommanded:typeof HEAD!=='undefined'?HEAD.state?.commanded:null},
     phone:{fallFlag:S.fallen,cooling:THERMAL.paused,flowConfidence:S.flow?.conf,flowForward:S.flow?.fwd,flowTurn:S.flow?.yaw},
+    sensorInterpretation:typeof sensorAwarenessSnapshot==='function'?sensorAwarenessSnapshot():null,
     primitives:{forward:'start_walking(direction:forward,target:visible destination); continuous camera-supervised travel; move.cycles only for bounded tests',
       backward:'start_walking(direction:backward); reversed saved gait with rearward camera supervision',
       left:'move(forward:0,turn:-1); calibrated Open/Closed turn cycle',

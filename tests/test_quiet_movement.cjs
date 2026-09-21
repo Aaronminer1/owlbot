@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-brain.html'),'utf8');
 assert.match(html,/name:"speak",description:/,'speech handler must also have a discoverable tool schema');
-const box={};vm.createContext(box);
+const box={musicGroundReply:text=>text};vm.createContext(box);
 vm.runInContext(html.slice(html.indexOf('function quietPhysicalRequest('),html.indexOf('function groundedSpokenReply(')),box);
 for(const request of ['Andrew walk forward','Turn left','Tilt up','Look at me','Explore the room','ROUTE RECOVERY requested by the owner','AUTONOMOUS PERCEPTION UPDATE']){
   assert.equal(box.quietPhysicalRequest(request),true,request);

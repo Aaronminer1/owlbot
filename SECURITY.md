@@ -1,5 +1,10 @@
 # Security policy
 
+The newly published Pico firmware is experimental. Its stock relay pairing is
+not strong owner authorization, and its current TLS setup does not explicitly
+configure certificate validation. See [the Pico security limits](firmware/pico/README.md#security-and-electrical-limits).
+Never treat it as an unattended or security-sensitive controller.
+
 ## Experimental status
 
 OwlBot is a work-in-progress robotics experiment, not a hardened product. Do not deploy it where compromise, incorrect output, or unexpected physical motion could harm people, animals, property, accounts, or private data.

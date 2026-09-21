@@ -111,6 +111,37 @@ async function saveNamedForwardWalk(){
 }
 function walkNavigationError(kind,message){return Object.assign(Error(message),{navigationKind:kind});}
 function walkingUsesLocalVision(route,ready){return route!=='cloud'&&ready;}
+function walkingVisionRoute(){return $('#walkVisionRoute')?.value==='local'?'local':localVisionRoute();}
+async function freshInitialWalkingView(direction,guard,signal,guidance){
+  let view=await checkNamedWalkPath(direction,guard,signal,guidance);
+  for(let retry=0;retry<2;retry++){
+    guard();const age=walkVisionClock()-view?.capturedAt;
+    if(Number.isFinite(age)&&age>=0&&age<2000)return view;
+    // Model cold-start time is spent with the feet still. Never use that old
+    // CLEAR as permission to start, and never relabel a newer unexamined frame.
+    NW.warmupRefreshes=retry+1;
+    $('#namedWalkStatus').textContent='Camera warmed up; checking a new frame before starting…';
+    view=await checkNamedWalkPathAligned(direction,guard,signal,{...guidance,keepAligned:true,headGeneration:view?.headGeneration});
+  }
+  guard();const age=walkVisionClock()-view?.capturedAt;
+  if(!Number.isFinite(age)||age<0||age>=2000)throw walkNavigationError('vision_slow',
+    'Walking camera is too slow for fresh clearance; no walk started. Check the walking vision setting.');
+  return view;
+}
+async function pollNamedWalkingRun(runId,continuous,guard){
+  try{return (await channelCommand(continuous?'walk_keepalive':'info',continuous?{run_id:runId}:{})).named_walk;}
+  catch(error){
+    if(!continuous||!/no_matching_continuous_walk/.test(String(error.message||error)))throw error;
+    // A stopped run rejects keepalive. Read its actual terminal cause instead
+    // of telling the mind its walking tool disappeared. Never restart here.
+    guard();const state=(await channelCommand('info')).named_walk;guard();
+    if(!state||state.run_id!==runId||state.running)throw error;
+    if(state.error==='vision_check_timed_out')throw walkNavigationError('vision_unavailable',
+      'Camera checks did not deliver fresh clearance before the Pico vision wait expired; body connection and walking tool are still present.');
+    if(state.error)throw Error('Pico stopped this walk: '+state.error);
+    throw Error('The Pico stopped this walk; no automatic replay was sent.');
+  }
+}
 function parseWalkClearance(text){
   let result;
   try{result=JSON.parse(String(text).trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}
@@ -211,7 +242,7 @@ async function checkNamedWalkPathAligned(direction,guard,signal,options={}){
   guard();
   // Navigation must honor the selected route too. An installed local eye is
   // not evidence that it is faster than the selected provider.
-  const route=localVisionRoute(),useLocal=walkingUsesLocalVision(route,route!=='cloud'&&localVisionReady());
+  const route=walkingVisionRoute(),useLocal=walkingUsesLocalVision(route,route!=='cloud'&&localVisionReady());
   const capturedAt=walkVisionClock();
   let img;
   if(useLocal){
@@ -361,7 +392,7 @@ async function runNamedForwardWalk(options={}){
   const movingVision=!bench&&Boolean(info.named_walk.moving_vision);
   try{
     do{
-    const initialView=!bench?await checkNamedWalkPath(direction,guard,NW.abort.signal,guidance):null;
+    const initialView=!bench?await freshInitialWalkingView(direction,guard,NW.abort.signal,guidance):null;
     if(initialView?.steering)throw correctionError(initialView,completedCycles);
     guard();
     // Existing Pico firmware accepts ten cycles per run. Longer owner-selected
@@ -407,7 +438,7 @@ async function runNamedForwardWalk(options={}){
       await new Promise(r=>setTimeout(r,500));
       guard();
       if(preview?.error())throw preview.error();
-      const state=(await channelCommand(continuous?'walk_keepalive':'info',continuous?{run_id:runId}:{})).named_walk;
+      const state=await pollNamedWalkingRun(runId,continuous,guard);
       guard();
       if(!state||state.run_id!==runId)throw Error('Walk state changed; completion unconfirmed.');
       if(options.onProgress)options.onProgress(state);

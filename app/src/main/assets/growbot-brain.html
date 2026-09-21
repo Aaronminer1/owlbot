@@ -1,12 +1,4 @@
 <!doctype html>
-<!--
-  Community phone-brain entry point. Start at docs/REVIEW-GUIDE.md for the
-  module map and key execution paths. This file still owns UI wiring, shared
-  state, provider requests, tool dispatch and transport; it is not a standalone
-  navigation algorithm. Companion scripts use shared globals, so preserve
-  script order and validate both source parsing and behavior after edits.
-  Never paste device exports, credentials or owner calibration into this file.
--->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -875,6 +867,8 @@
     <label>Pause after each movement (ms)<input id="walkSettle" type="number" min="0" max="500" step="10" value="20"></label>
     <label>Leg lift (% of saved Down-to-Up travel)<input id="walkLift" type="number" min="10" max="100" step="5" value="50"></label>
     <label>Camera facing the robot’s forward direction<select id="walkForwardCamera"><option value="">Choose the mounted direction</option><option value="front">Screen / selfie camera</option><option value="back">Rear camera</option></select></label>
+    <label>Walking vision<select id="walkVisionRoute"><option value="follow">Use main vision setting</option></select></label>
+    <p class="hint">This community build uses the configured vision provider. Freshness is checked before moving; a slow or missing camera is not an obstacle diagnosis. The private on-phone model runtime is not included.</p>
     <p class="note">Walking paces: creep 200, slow 600, fast 1000, run 1600 µs/s. Ordinary travel uses the saved speed; settling and paired-foot timing use your saved settings. Actual speed depends on servo load and power. 50% lift raises each foot halfway. Head speed and calibration limits stay unchanged. Pico 6.89+ can check the next short cycle while walking and continue when a fresh clear view is ready; otherwise it pauses. A farther wall is a boundary to approach, not an automatic stop. Supervise: a camera is not a distance or cliff sensor.</p>
     <div class="row"><button class="primary" id="btnNamedWalkSave">Save walk settings to Pico</button><button id="btnNamedWalkTest">Bench: 1 forward cycle</button><button id="btnNamedWalkBackTest">Bench: 1 backward cycle</button><button class="danger" id="btnNamedWalkStop">Stop &amp; release</button></div>
     <p class="note">Bench buttons skip camera checks and run only one cycle. Support the body with feet clear of the floor. They work while Andrew sleeps in Settings; normal travel does not.</p>
@@ -1081,6 +1075,39 @@
   </div>
 
   <div class="card">
+    <h2>Bedtime stories</h2>
+    <label>Complete story / edition <select id="storyTitle"></select></label>
+    <p id="storyNote" class="note"></p>
+    <div class="row"><button id="storyRead">Read from the beginning</button><button id="storyPause">Pause story</button><button id="storyResume">Resume saved place</button></div>
+    <label><input type="checkbox" id="storyCharacters" checked> Gentle character voices</label>
+    <label><input type="checkbox" id="storyExpressive" checked> Expressive conversation: higher when excited, lower when sad</label>
+    <div class="row"><button id="storyVoiceexcited">Excited voice</button><button id="storyVoicesad">Sad voice</button><button id="storyVoicecomfort">Comforting voice</button></div>
+    <label>Add a plain-text story you have permission to use <input type="file" id="storyImport" accept=".txt,text/plain"></label>
+    <button id="storyRemove">Remove selected imported story</button>
+    <p id="storyStatus" role="status">Choose a story</p>
+    <p class="note">Twelve complete child-friendly retellings are the default; twelve historical originals remain available with content notes. Text and reading position are stored locally. Narration uses Android device TTS; its network requirements depend on your engine and voice. Hold Talk to pause and ask a question, then release to send. The microphone stays closed during narration. Story questions use the current scene with your selected model provider. Say “continue the story” when ready, or “yes” after a spoken offer to continue. The unfinished sentence repeats, not the whole passage. Settings previews are audio-only; wake your companion for conversation.</p>
+  </div>
+
+  <div class="card">
+    <h2>Music</h2>
+    <label>Favorite piece</label>
+    <select id="musicFavorite"><option value="">Not chosen</option><option value="fur_elise">Beethoven — Für Elise</option></select>
+    <label><input type="checkbox" id="musicIdle"> Occasionally play or hum music when idle</label>
+    <label><input type="checkbox" id="musicImproviseIdle"> Include new offline improvisations, not only my favorite</label>
+    <div class="row"><button id="musicPlay">Play full Für Elise</button><button id="musicHum">Hum full Für Elise</button><button id="musicStop">Stop music</button></div>
+    <div class="row"><button id="musicCopy">Copy my humming</button></div>
+    <div class="row"><button id="musicImprovise">Invent a new tune — preview</button></div>
+    <label>My songbook (up to 50 pieces; older pieces are never automatically deleted)</label>
+    <select id="musicSaved"><option value="">No compositions saved yet</option></select>
+    <button id="musicReplay">Play selected piece</button>
+    <label>Music volume <input type="range" id="musicVolume" min="0" max="1" step=".05"></label>
+    <label>Play another MIDI file (type 0/1, up to 15 minutes / 2 MB)</label>
+    <input type="file" id="musicFile" accept=".mid,.midi,audio/midi">
+    <p id="musicStatus" role="status">Ready</p>
+    <p class="note">Complete score, including repeats and ending. Offline synthesized piano or humming; not the speaking voice. Music pauses the microphone to prevent echoes. Tap Talk, type, or Stop to interrupt. Copy my humming listens locally for up to 12 seconds without speech transcription. Idle music respects sleep, quiet conversation mode and movement, and never repeats until you interact again.</p>
+  </div>
+
+  <div class="card">
     <h2>Speech &amp; listening</h2>
     <label>Conversation mode</label>
     <select id="vInputMode">
@@ -1090,7 +1117,7 @@
     <p class="note">Ears-open mode avoids repeatedly opening Android's microphone
       and its Samsung start/stop beep. Audio stays local until speech is detected;
       Android 13+ transcribes only that completed utterance with the system recognizer.
-      Local pitch summaries can answer sustained humming with a short MIDI motif.</p>
+      Use Copy my humming to echo a melody with its rhythm, without sending humming to speech recognition.</p>
     <div id="sttBox" class="hide">
       <div class="row">
         <button id="btnHandsFree">Continuous conversation: off</button>
@@ -1326,7 +1353,14 @@ directions, no lists. Use your tools to act rather than describing action.</text
 
 <video id="vid" playsinline muted></video>
 
+<script src="story-core.js"></script>
+<script src="story-library.js"></script>
+<script src="story-player.js"></script>
+<script src="music-core.js"></script>
+<script src="music-score.js"></script>
+<script src="music-player.js"></script>
 <script src="context-window.js"></script>
+<script src="sensor-awareness.js"></script>
 <script src="interaction-lane.js"></script>
 <script src="travel-estimate.js"></script>
 <script src="walk-stream.js"></script>
@@ -1383,6 +1417,8 @@ const SETTINGS_ROUTES=[
   ["Import someone else's policy","teach","Import a policy","Load a compatible movement policy",true],
   ["Tune the gait on the real robot","teach","Gait learning lab","Experimental hardware tuning",true],
   ["Speech & listening","assistant","Conversation mode","Push-to-talk or continuous listening"],
+  ["Music","assistant","Music & humming","Full MIDI pieces and copying your tune"],
+  ["Bedtime stories","assistant","Bedtime stories","Complete stories, saved places, gentle voices"],
   ["Speaking voice","assistant","Speaking voice","Voice, pitch, speed, and preview"],
   ["AI provider","advanced","Models & connection","Cloud, Tower, or phone-local models"],
   ["Camera & vision","advanced","Vision & activity","Seeing, thinking interval, and automatic actions"],
@@ -3015,8 +3051,14 @@ function readNativeSensors(){
       applyThermalPolicy(S.phonePower);
       const motionPaused=data.sensorMode==="paused"||APP.resting||THERMAL.paused||thermalSerious();
       const m = data.motion || {};
-      const valid3 = v => Array.isArray(v) && v.length >= 3 &&
-                              v.every(x=>typeof x === "number");
+      // Interpret freshness per sensor: a new gyro sample cannot refresh old accel.
+      for(const key of ['accelerationMps2','linearAccelerationMps2','gravityMps2',
+        'gyroscopeRadS','orientationDegAzimuthPitchRoll'])
+        if(!OwlSensors.reading(data,key).valid)m[key]=null;
+      const valid3 = v => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+      S.accelOK=!motionPaused&&valid3(m.accelerationMps2);
+      if(!valid3(m.linearAccelerationMps2))S.linearAccel=[0,0,0];
+      if(!valid3(m.gyroscopeRadS))S.gyro=[0,0,0];
       if(!motionPaused&&valid3(m.accelerationMps2)){S.accel=m.accelerationMps2.slice(0,3);S.accelOK=true;}
       if(!motionPaused&&valid3(m.linearAccelerationMps2)) S.linearAccel=m.linearAccelerationMps2.slice(0,3);
       if(!motionPaused&&valid3(m.gravityMps2)) S.gravity=m.gravityMps2.slice(0,3);
@@ -3028,20 +3070,17 @@ function readNativeSensors(){
       if(!motionPaused&&(valid3(m.accelerationMps2) || valid3(m.gyroscopeRadS))){
         S.motionOK=true;
         pill("#pMotion","motion",true);
-      }else if(motionPaused){
+      }else{
         S.motionOK=false;
         pill("#pMotion","motion",false);
       }
-      if(typeof m.stepsSinceBoot === "number") S.steps=m.stepsSinceBoot;
-      if(data.environment && typeof data.environment.lightLux === "number"){
-        S.light=data.environment.lightLux;
-        pill("#pLight","light",true);
-      }
-      if(data.environment && typeof data.environment.proximityCm === "number")
-        S.proximity=data.environment.proximityCm;
+      S.steps=motionPaused?null:OwlSensors.reading(data,'stepsSinceBoot').value;
+      S.light=motionPaused?null:OwlSensors.reading(data,'lightLux').value;
+      S.proximity=motionPaused?null:OwlSensors.reading(data,'proximityCm').value;
+      pill("#pLight","light",S.light!==null);
       const p=data.position||{};
       pill("#pPosition","position",p.permission ? Boolean(p.provider) : null);
-      if(!motionPaused)reflexTick();
+      if(!motionPaused&&S.accelOK)reflexTick();
     }
   }catch(e){
     log("native sensor snapshot failed: "+e.message,"w");
@@ -3459,6 +3498,7 @@ function flowLoop(){
   }
   const {g, mean, rgba} = sample;
   S.flow.lum = mean;
+  S.flow.sampleAt = Date.now();
   lastRGBA = rgba;          // the face detector reuses this frame
 
   if(prevGray){
@@ -4832,7 +4872,7 @@ function refreshSelfUI(){
 }
 function selfDiagnostic(){
   const affect=currentAffectSnapshot();
-  return {version:"7.15-community",socialInitiative:typeof socialInitiativeContext==='function'?socialInitiativeContext():null,selfImprovement:typeof selfImprovementEnabled==='function'?selfImprovementEnabled():false,walkingStream:typeof walkingStreamStatus==='function'?walkingStreamStatus():null,context:typeof CONTEXT_STATS!=='undefined'?CONTEXT_STATS:null,tuning:Object.assign({},SELF.tuning),
+  return {version:"7.23-community",socialInitiative:typeof socialInitiativeContext==='function'?socialInitiativeContext():null,selfImprovement:typeof selfImprovementEnabled==='function'?selfImprovementEnabled():false,walkingStream:typeof walkingStreamStatus==='function'?walkingStreamStatus():null,context:typeof CONTEXT_STATS!=='undefined'?CONTEXT_STATS:null,tuning:Object.assign({},SELF.tuning),
     recentIssues:SELF.issues.slice(-8),openIssues:SELF.issues.filter(x=>x.status!=="resolved").slice(-12),pending:SELF.pending,
     voice:{engine:VOICE.engine,name:VOICE.name,pitch:VOICE.pitch,rate:VOICE.rate,style:VOICE.style,
       identityLocked:true,failures:VOICE.edgeFails,busy:VOICE.busy,lastError:VOICE.lastError,
@@ -4973,12 +5013,14 @@ window.onNeuralError = msg => {
   if(p) p.reject(new Error(msg || "Microsoft TTS failed"));
 };
 window.onNeuralAudioFor = payload => {
+  if(typeof storyCaptureReply==='function'&&storyCaptureReply(payload))return;
   let msg;try{msg=JSON.parse(payload);}catch(e){return;}
   const p=VOICE.pending;
   if(!p||msg.id!==p.id){log("ignored stale neural audio callback","w");return;}
   window.onNeuralAudio(msg.audio||"");
 };
 window.onNeuralErrorFor = payload => {
+  if(typeof storyCaptureReply==='function'&&storyCaptureReply(payload,true))return;
   let msg;try{msg=JSON.parse(payload);}catch(e){return;}
   const p=VOICE.pending;
   if(!p||msg.id!==p.id){log("ignored stale neural error callback","w");return;}
@@ -5002,6 +5044,7 @@ window.onTtsReady    = ok => {
 /** The one entry point. Everything the creature says goes through here. */
 function say(text, opts){
   if(APP.resting||THERMAL.paused||thermalSerious())return;
+  if(typeof storyOwnsResources==='function'&&storyOwnsResources())return;
   text = spokenReply(text);
   if(!text) return;
   if(!(opts&&opts.allowRepeat)&&!MIND.activeRequest&&typeof repeatedAnsweredQuestion==='function'&&repeatedAnsweredQuestion(text)){
@@ -5028,6 +5071,11 @@ function say(text, opts){
   // neural voice. Keep only the newest few distinct utterances.
   while(VOICE.queue.length >= 3) VOICE.queue.shift();
   VOICE.queue.push(text);
+  if(typeof emotionalVoiceIdentity==='function'){
+    VOICE.deliveryEmotions=VOICE.deliveryEmotions||new Map();
+    VOICE.deliveryEmotions.set(text,opts?.emotion||(typeof AFFECT!=='undefined'?AFFECT.emotion:'neutral'));
+    while(VOICE.deliveryEmotions.size>12)VOICE.deliveryEmotions.delete(VOICE.deliveryEmotions.keys().next().value);
+  }
   if(typeof rememberSpokenQuestion==='function'&&!(typeof identityEnrollmentActive==='function'&&identityEnrollmentActive()))rememberSpokenQuestion(text);
   VOICE.recentSpoken.push({t:stamp,text});
   VOICE.recentSpoken=VOICE.recentSpoken.slice(-10);
@@ -5042,7 +5090,10 @@ async function drainVoice(){
   VOICE.busy = true;
   const generation=++VOICE.generation;
   const text = VOICE.queue.shift();
+  if(typeof storySpeechStarting==='function')storySpeechStarting();
   const identity=voiceIdentitySnapshot();
+  if(typeof emotionalVoiceIdentity==='function')Object.assign(identity,emotionalVoiceIdentity(identity,VOICE.deliveryEmotions?.get(text)||'neutral'));
+  VOICE.deliveryEmotions?.delete(text);
   VOICE.currentText = text;
   VOICE.lastUsedIdentity=identity;
   log("voice["+identity.engine+"] "+(identity.engine==="microsoft"?identity.name+" ":"")+
@@ -5069,8 +5120,9 @@ async function drainVoice(){
     }
   }finally{
     if(generation!==VOICE.generation)return;
+    if(spokenChunks===chunks.length&&typeof storyReplyDelivered==='function')storyReplyDelivered(text);
     VOICE.holdMic=false;
-    try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!APP.resting&&!THERMAL.paused)NATIVE.setMicPaused(false);}catch(e){}
+    try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!APP.resting&&!THERMAL.paused&&!(typeof musicOwnsResources==='function'&&musicOwnsResources()))!(typeof storyOwnsResources==='function'&&storyOwnsResources())&&NATIVE.setMicPaused(false);}catch(e){}
     VOICE.currentText = "";
     VOICE.busy = false;
     if(VOICE.queue.length) drainVoice();
@@ -5082,13 +5134,15 @@ function voiceIdentitySnapshot(){
 }
 
 async function speakVoiceChunk(text,identity){
-  if(identity.engine!=="microsoft")return sayDevice(text);
+  const generation=VOICE.generation;
+  if(identity.engine!=="microsoft")return sayDevice(text,identity);
   if(!NATIVE||!NATIVE.speakNeural)throw new Error("Android neural voice transport unavailable");
   try{return await sayMicrosoft(text,identity);}
   catch(firstError){
     if(/cancelled|superseded|resting|thermal/i.test(firstError&&firstError.message||""))throw firstError;
     log("retrying the same locked voice "+identity.name+" after: "+firstError.message,"w");
     await new Promise(resolve=>setTimeout(resolve,900));
+    if(generation!==VOICE.generation)throw Error('cancelled');
     return sayMicrosoft(text,identity);
   }
 }
@@ -5114,7 +5168,8 @@ function speechChunks(text,maxChars=420){
   return chunks.filter(Boolean);
 }
 
-async function sayDevice(text){
+async function sayDevice(text,identity=voiceIdentitySnapshot()){
+  const generation=VOICE.generation;
   await waitForHumanSpeechBeforePlayback(VOICE.generation);
   if(NATIVE && NATIVE.speak){
     // Android's TTS engine takes a second or two to initialise, and the
@@ -5124,25 +5179,28 @@ async function sayDevice(text){
       try{ if(!NATIVE.ttsReady || NATIVE.ttsReady()) break; }catch(e){ break; }
       await new Promise(res=>setTimeout(res,500));
     }
-    return new Promise(resolve=>{
+    if(generation!==VOICE.generation)throw Error('cancelled');
+    if(NATIVE.speakTagged&&typeof deviceSpeakTagged==='function')return deviceSpeakTagged(text,identity);
+    return new Promise((resolve,reject)=>{
       VOICE.deviceDone = resolve;
       VOICE.deviceTimer = setTimeout(()=>{
         VOICE.deviceTimer = null;
-        if(VOICE.deviceDone){ const done=VOICE.deviceDone; VOICE.deviceDone=null; done(); }
+        if(VOICE.deviceDone){VOICE.deviceDone=null;try{NATIVE.stopSpeaking();}catch(e){}reject(Error('Device voice timed out; passage not marked complete'));}
       }, 30000);
+      if(NATIVE.voice)NATIVE.voice(1+identity.pitch/100,1+identity.rate/100);
       NATIVE.speak(text);   // completion resolves through onSpeechEnd
     });
   }
-  return new Promise(resolve=>{
+  return new Promise((resolve,reject)=>{
     try{
       const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.02; u.pitch = 1.45;
+      u.rate = 1+identity.rate/100; u.pitch = 1+identity.pitch/100;
       u.onstart = () => window.onSpeechStart();
       u.onboundary = e => window.onSpeechRange(e.charLength || 4);
       u.onend = () => { window.onSpeechEnd(); resolve(); };
-      u.onerror = () => { window.onSpeechEnd(); resolve(); };
+      u.onerror = () => { window.onSpeechEnd(); reject(Error('Browser voice failed; passage not completed')); };
       speechSynthesis.cancel(); speechSynthesis.speak(u);
-    }catch(e){ resolve(); }
+    }catch(e){ reject(e); }
   });
 }
 
@@ -5216,9 +5274,13 @@ async function playBuffer(bytes){
 }
 
 function hush(){
+  if(typeof storyPause==='function')storyPause('Paused — your place is saved',false);
+  if(typeof musicStop==='function')musicStop();
   VOICE.generation++;
+  if(VOICE.deviceRequest){const request=VOICE.deviceRequest;VOICE.deviceRequest=null;clearTimeout(request.timer);request.reject(Error('cancelled'));}
   VOICE.holdMic=false;
   VOICE.queue.length = 0;
+  VOICE.deliveryEmotions?.clear();
   if(VOICE.pending){
     const pending = VOICE.pending;
     VOICE.pending = null;
@@ -6280,7 +6342,7 @@ const _origSpeechEnd = window.onSpeechEnd;
 window.onSpeechEnd = () => {
   _origSpeechEnd();
   VOICE.holdMic=false;
-  try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!APP.resting&&!APP.settings&&!THERMAL.paused)NATIVE.setMicPaused(false);}catch(e){}
+  try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!APP.resting&&!APP.settings&&!THERMAL.paused&&!(typeof musicOwnsResources==='function'&&musicOwnsResources()))!(typeof storyOwnsResources==='function'&&storyOwnsResources())&&NATIVE.setMicPaused(false);}catch(e){}
 };
 
 /* =============================================================== AMBIENT */
@@ -6378,13 +6440,15 @@ function classifyMotionAppraisal({linMag,spin,jerk,mag,motionScore}){
 }
 
 function ambientTick(){
+  if(APP.resting)return;
   const t = now();
 
   /* ---- light and dark -------------------------------------------------
      Two sources: the ambient light sensor if the phone exposes one, and the
      camera's mean brightness, which also catches a hand over the lens. */
   const rawLux=(S.light!=null)?Math.max(0,Number(S.light)):
-    clamp(Number(S.flow.lum)||0,0,1)*300;
+    S.camOK&&Date.now()-S.flow.sampleAt<1500?clamp(Number(S.flow.lum)||0,0,1)*300:null;
+  if(rawLux!==null){
   if(AMBIENT.lumFast===null){
     AMBIENT.lumFast=rawLux;AMBIENT.lumSlow=rawLux;AMBIENT.lastRawLux=rawLux;
     AMBIENT.dark=rawLux<12;
@@ -6406,6 +6470,7 @@ function ambientTick(){
     else ambientSay("light","curious",2400,detail);
   }
   AMBIENT.lastRawLux=rawLux;
+  }else{AMBIENT.lumFast=null;AMBIENT.lumSlow=null;}
 
   /* ---- being moved ----------------------------------------------------
      Gravity-inclusive accel magnitude sits at ~9.81 when still. Departures
@@ -6468,8 +6533,9 @@ function ambientTick(){
 
   /* ---- proximity and being carried ---------------------------------- */
   if(typeof S.proximity === "number"){
-    const near = S.proximity < 4.5;
-    if(AMBIENT.near === null) AMBIENT.near=near;
+    const near = S.native? sensorAwarenessSnapshot().proximityNear : S.proximity < 4.5;
+    if(near===null)AMBIENT.near=null;
+    else if(AMBIENT.near === null) AMBIENT.near=near;
     else if(near !== AMBIENT.near && t-AMBIENT.lastNear > 1800){
       AMBIENT.near=near; AMBIENT.lastNear=t;
       ambientSay(near?"near":"far", near?"surprised":"curious", 2600);
@@ -6484,14 +6550,13 @@ function ambientTick(){
     }
   }
 
-  /* ---- movement seen ---------------------------------------------------
-     Flow energy while the body itself is not walking means the world moved,
-     not us. That is the difference between "I am moving" and "something is
-     moving", and it is only available because we measure flow at all. */
-  if(!S.running && S.flow.conf > 0.25){
+  /* A still gait is not a still camera: account for head motion and handling.
+     Even low inertial activity cannot rule out constant-speed translation. */
+  if(sensorAwarenessSnapshot().sceneMotion==='scene change candidate; verify in images'){
     const seen = Math.abs(S.flow.yaw) + Math.abs(S.flow.tilt) + Math.abs(S.flow.fwd)*0.5;
     AMBIENT.motionSeen = lerp(AMBIENT.motionSeen, seen, 0.2);
-    if(AMBIENT.motionSeen > 0.8) ambientSay("motion", "curious", 2600);
+    if(AMBIENT.motionSeen > 0.8) ambientSay("motion", "curious", 2600,
+      'camera image changed while inertial activity was low; verify whether the scene or viewpoint changed');
   } else {
     AMBIENT.motionSeen *= 0.9;
   }
@@ -6681,6 +6746,7 @@ const NEED_LINES = {
 
 let lifeLast = now();
 function lifeTick(){
+  if(typeof musicIdleTick==='function')musicIdleTick();
   const t = now();
   const dt = Math.min(5, (t - lifeLast)/1000);   // seconds
   lifeLast = t;
@@ -6775,9 +6841,19 @@ function suspendBodyForSleep(reason="user"){
   setDot(false);renderSimulationState();
 }
 
+// Idempotent: cold-start Sleep must pause native subscriptions too, not merely
+// paint a sleeping face. No motor-authority preferences are changed here.
+function pauseRestingSensors(){
+  earsPause(true);disableCamera();disableMic();pauseMotionSensors();
+  S.light=null;S.proximity=null;S.steps=null;S.accelOK=false;
+  try{
+    if(NATIVE&&NATIVE.pauseHardwareSensors)NATIVE.pauseHardwareSensors();
+    if(NATIVE&&NATIVE.keepAwake)NATIVE.keepAwake(false);
+  }catch(e){}
+}
 function restNow(reason="user"){
   if(typeof NW!=='undefined')NW.abort?.abort();
-  if(APP.resting)return;
+  if(APP.resting){pauseRestingSensors();return;}
   FACE.lastTouch = now();
   if(reason==="user"){
     chirp("sleep");
@@ -6793,7 +6869,7 @@ function restNow(reason="user"){
   pauseBackgroundWorkers("rest mode");
   document.body.classList.add("resting");
   FACE.resize();
-  stopMind();hush();earsPause(true);
+  stopMind();hush();if(typeof storyForgetDiscussion==='function')storyForgetDiscussion();earsPause(true);
   stopMidiPlayback();
   for(const [id,p] of INTERNET.pending){clearTimeout(p.timer);p.reject(new Error("resting"));}
   INTERNET.pending.clear();
@@ -9378,6 +9454,8 @@ function backgroundSummary(consume=false){
   const active=activeBackgroundJobs();
   const ready=BACKGROUND.jobs.filter(x=>x.status==="complete"&&!x.integratedAt).slice(-4);
   const lines=active.slice(0,5).map(x=>x.type+" worker "+x.status+": "+x.task);
+  for(const job of BACKGROUND.jobs.filter(x=>x.type==='midi'&&x.origin==='owner'&&x.status==='blocked').slice(-2))
+    lines.push('MUSIC FAILED (not played): '+job.task+'; '+job.error);
   for(const job of ready)lines.push("SILENT WORKER EVIDENCE "+job.id+": task="+job.task+
     "; result="+(job.result||"completed")+"; tools="+(job.tools||[]).join(","));
   if(consume&&ready.length){
@@ -9400,10 +9478,13 @@ function delegateBackgroundTask(args,origin){
   const job={id:"worker-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),type,task,
     origin:origin||"autonomous",status:"queued",created:Date.now(),updated:Date.now(),
     result:"",error:"",announced:false,integratedAt:0,
-    needsVision:Boolean(args.needsVision)||backgroundNeedsVision(task),tools:[]};
+    // "The person requested" used to trigger the visual "person" classifier.
+    // Music needs a camera only for explicit visual music-reading requests.
+    needsVision:type==='midi'?/\b(?:sheet music|score in (?:this|the) (?:image|photo)|read (?:these|the) notes)\b/i.test(task):Boolean(args.needsVision)||backgroundNeedsVision(task),tools:[],
+    ...(type==='midi'?{musicRequest:args.musicRequest||musicRequestDetails(task)}:{})};
   BACKGROUND.jobs.push(job);backgroundSave();setTimeout(pumpBackgroundJobs,0);
   return "background sub-agent started: "+job.id+" owns "+task+
-    ". Foreground conversation may continue; completion will be delivered later.";
+    ". Job queued, not composed or played yet. Foreground conversation may continue; completion will be delivered later.";
 }
 function backgroundToolNames(type){
   if(type==="midi")return ["play_midi","stop_midi"];
@@ -9413,10 +9494,15 @@ function backgroundTools(type){
   const allowed=new Set(backgroundToolNames(type));
   return TOOLS.filter(x=>allowed.has(x.function&&x.function.name));
 }
-function waitForMidiWorker(timeoutMs=95000){
+function waitForMidiWorker(generation,signal){
   return new Promise(resolve=>{
+    const timeoutMs=Math.min(910000,Math.max(10000,(MIDI_PLAYER.duration+10)*1000));
     const started=Date.now(),timer=setInterval(()=>{
-      if(!MIDI_PLAYER.playing||Date.now()-started>timeoutMs){clearInterval(timer);resolve(!MIDI_PLAYER.playing);}
+      if(signal?.aborted||MIDI_PLAYER.generation!==generation||!MIDI_PLAYER.playing||Date.now()-started>timeoutMs){
+        clearInterval(timer);
+        const result=MIDI_PLAYER.lastResult;
+        resolve(result?.generation===generation?result:{state:'interrupted',reason:'Playback ownership changed or timed out'});
+      }
     },250);
   });
 }
@@ -9444,16 +9530,17 @@ async function runBackgroundJob(job){
     "\nVISION-MODEL EVIDENCE: "+String(freshVisual||MIND.visionReport||"none").slice(0,900)+
     "\nRECENT WORLD JOURNAL: "+autonomyWorldSummary().slice(0,900)+
     "\nThese are semantic snapshots, not live pixels. Preserve their uncertainty.";
+  const musicInstructions=job.type==='midi'?await musicWorkerPrompt(job):'';
   const messages=[
     {role:"system",content:"You are an independent OwlBot background sub-agent. You own one job and cannot see or interrupt foreground conversation. "+instructions+" Never claim body, camera, or sensor access. Finish the assigned job and report its outcome."},
-    {role:"user",content:"BACKGROUND JOB ("+job.type+"): "+job.task+evidence}
+    {role:"user",content:"BACKGROUND JOB ("+job.type+"): "+job.task+evidence+musicInstructions}
   ];
   let final="",usedMidi=false;
   for(let loop=0;loop<5;loop++){
     if(controller.signal.aborted||(typeof improvementWorkAllowed==='function'&&!improvementWorkAllowed(job)))throw Object.assign(Error('Background work paused'),{name:'AbortError'});
     const forceSynthesis=job.type!=="midi"&&loop>=2;
     if(forceSynthesis)messages.push({role:"user",content:"Synthesize the evidence now. Do not call another tool. Return a concrete concise finding, uncertainty, and next step when useful."});
-    const request={model,messages,temperature:job.type==="midi"?.72:.35,max_tokens:700,stream:false,
+    const request={model,messages,temperature:job.type==="midi"?.72:.35,max_tokens:job.type==='midi'?2400:700,stream:false,
       think:false,reasoning_effort:"none",reasoning:{effort:"none"}};
     if(job.type==="midi"||(!forceSynthesis&&backgroundNeedsRetrieval(job.task))){
       request.tools=backgroundTools(job.type);request.tool_choice="auto";
@@ -9479,35 +9566,66 @@ async function runBackgroundJob(job){
         messages.push({role:"tool",tool_call_id:call.id,content:"tool unavailable to this background worker"});continue;
       }
       let toolArgs={};try{toolArgs=JSON.parse(call.function.arguments||"{}");}catch(e){}
+      if(name==='play_midi'){
+        try{toolArgs=musicValidateWorkerScore(job,toolArgs);}
+        catch(e){messages.push({role:'tool',tool_call_id:call.id,content:'Not played: '+e.message});continue;}
+      }
       const actionStarted=Date.now();
       const result=await runTool(name,toolArgs,{backgroundJob:job.id});
+      if(name==='play_midi'){
+        if(!MIDI_PLAYER.playing)throw new Error('MIDI request did not start playback');
+        job.musicGeneration=MIDI_PLAYER.generation;
+      }
       recordActionOutcome(name,result,"background",Date.now()-actionStarted);
       job.tools.push(name);usedMidi=usedMidi||name==="play_midi";
       messages.push({role:"tool",tool_call_id:call.id,content:String(result)});
     }
+    // Once music starts the player owns the performance. Do not spend another
+    // model call, restart the score, or mark a 156-second piece done at 95 s.
+    if(usedMidi)break;
   }
   if(job.type==="midi"&&!usedMidi)throw new Error("midi worker returned without playing a score");
-  if(usedMidi)await waitForMidiWorker();
+  if(usedMidi){
+    const outcome=await waitForMidiWorker(job.musicGeneration,controller.signal);
+    if(outcome.state!=='completed'){
+      job.status='cancelled';job.updated=Date.now();job.result='Music interrupted; not replayed: '+outcome.reason;
+      backgroundSave();return job.result;
+    }
+    final='Completed the local music performance: '+outcome.title;
+  }
   job.status="complete";job.completed=Date.now();job.updated=Date.now();
   job.result=(final||("completed with "+job.tools.join(", "))).slice(0,360);
   backgroundSave();return job.result;
 }
 function pumpBackgroundJobs(){
-  if(typeof humanConversationOwnsResources==='function'&&humanConversationOwnsResources())return;
+  const conversationOwns=typeof humanConversationOwnsResources==='function'&&humanConversationOwnsResources();
+  // Requested music is foreground work delegated for responsiveness. It can
+  // start after the reply, without the unrelated 45-second curiosity delay.
+  const ownerMusicReady=typeof musicOwnerJobCanStart==='function'&&musicOwnerJobCanStart();
+  if(conversationOwns&&!ownerMusicReady)return;
   if(APP.resting||THERMAL.paused||thermalSerious()||!MIND.on)return;
-  maybeSpawnProactiveBackgroundJob();
-  for(const job of BACKGROUND.jobs){
+  if(!conversationOwns)maybeSpawnProactiveBackgroundJob();
+  const jobs=[...BACKGROUND.jobs].sort((a,b)=>Number(b.type==='midi'&&b.origin==='owner')-Number(a.type==='midi'&&a.origin==='owner'));
+  for(const job of jobs){
+    if(conversationOwns&&!(ownerMusicReady&&job.type==='midi'&&job.origin==='owner'))continue;
     if(typeof improvementWorkAllowed==='function'&&!improvementWorkAllowed(job))continue;
     if(job.status!=="queued"||Date.now()<(Number(job.notBefore)||0)||BACKGROUND.running.size>=BACKGROUND.maxConcurrent)continue;
     const activeMidi=[...BACKGROUND.running.keys()].some(id=>BACKGROUND.jobs.find(x=>x.id===id)?.type==="midi");
     if(job.type==="midi"&&activeMidi)continue;
     runBackgroundJob(job).catch(e=>{
+      if(job.status==='cancelled'){backgroundSave();return;}
       const deferred=e.name==="ModelRateDeferred";
       job.status=(e.name==="AbortError"||deferred)?"queued":"blocked";job.error=String(e.message||e).slice(0,300);
       if(deferred)job.notBefore=Date.now()+Math.max(10000,Number(e.retryAfterMs)||30000);
       job.updated=Date.now();
       if(!deferred)selfRecordIssue("behavior","background sub-agent failed",job.error);
       backgroundSave();
+      // A failed request must not disappear from the conversation as though
+      // the promised performance succeeded. No automatic replay after failure.
+      if(job.type==='midi'&&job.origin==='owner'&&job.status==='blocked'){
+        MUSIC.notice='Requested music failed: '+job.error;musicRender();
+        if(musicOwnerJobCanStart()&&!APP.resting){say(musicHonestStatus());job.announced=true;}
+      }
     }).finally(()=>{BACKGROUND.running.delete(job.id);setTimeout(pumpBackgroundJobs,200);});
   }
 }
@@ -9952,6 +10070,7 @@ function shapeModelReply(text,userTurn){
 }
 function recordSpokenModelReply(text,kind="reply"){
   const clean=String(text||"").trim();if(!clean)return;
+  if(kind==='reply'&&typeof storyRememberAnswer==='function')storyRememberAnswer(clean);
   MIND.recentReplies=Array.isArray(MIND.recentReplies)?MIND.recentReplies:[];
   MIND.recentReplies.push(clean);MIND.recentReplies=MIND.recentReplies.slice(-6);
   noteBehaviorTopic(clean,kind,kind==="social"?.75:.5);
@@ -10232,81 +10351,9 @@ function callNativeInternet(kind,args){
 }
 
 /* --------------------------------------------------------- local MIDI */
-const MIDI_PLAYER={ctx:null,master:null,active:[],timer:null,playing:false,title:"",resumeMic:false};
-function stopMidiPlayback(){
-  clearTimeout(MIDI_PLAYER.timer);MIDI_PLAYER.timer=null;
-  for(const node of MIDI_PLAYER.active){try{node.stop();}catch(e){}}
-  MIDI_PLAYER.active=[];MIDI_PLAYER.playing=false;MIDI_PLAYER.title="";
-  if(MIDI_PLAYER.resumeMic){
-    MIDI_PLAYER.resumeMic=false;
-    try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!VOICE.holdMic)NATIVE.setMicPaused(false);}catch(e){}
-  }
-  return "local MIDI playback stopped";
-}
-async function playMidiScore(args){
-  if(APP.resting)throw new Error("OwlBot is resting");
-  const events=Array.isArray(args.events)?args.events.slice(0,160):[];
-  if(!events.length)throw new Error("no MIDI note events were provided");
-  const tempo=clamp(Number(args.tempo)||100,30,240);
-  const instrument=["piano","organ","flute","sine"].includes(args.instrument)
-    ? args.instrument:"piano";
-  if(!MIDI_PLAYER.ctx){
-    MIDI_PLAYER.ctx=new (window.AudioContext||window.webkitAudioContext)();
-    MIDI_PLAYER.master=MIDI_PLAYER.ctx.createGain();
-    MIDI_PLAYER.master.gain.value=.24;
-    MIDI_PLAYER.master.connect(MIDI_PLAYER.ctx.destination);
-  }
-  if(MIDI_PLAYER.ctx.state==="suspended")await MIDI_PLAYER.ctx.resume();
-  stopMidiPlayback();
-  if(EARS.handsFree&&!EARS.paused){
-    try{if(NATIVE&&NATIVE.setMicPaused){NATIVE.setMicPaused(true);MIDI_PLAYER.resumeMic=true;}}catch(e){}
-  }
-  const ctx=MIDI_PLAYER.ctx,origin=ctx.currentTime+.10,beatSeconds=60/tempo;
-  let endSeconds=0,scheduled=0;
-  for(const event of events){
-    const startBeat=clamp(Number(event.startBeat)||0,0,256);
-    const durationBeats=clamp(Number(event.durationBeats)||1,.125,16);
-    const notes=(Array.isArray(event.notes)?event.notes:[event.note])
-      .map(Number).filter(n=>Number.isFinite(n)&&n>=21&&n<=108).slice(0,8);
-    if(!notes.length)continue;
-    const velocity=clamp(Number(event.velocity)||.78,.08,1);
-    const offset=startBeat*beatSeconds;if(offset>=90)continue;
-    const start=origin+offset;
-    const duration=Math.min(durationBeats*beatSeconds,8,90-offset);
-    endSeconds=Math.max(endSeconds,offset+duration);
-    for(const midi of notes){
-      const osc=ctx.createOscillator(),gain=ctx.createGain();
-      osc.type=instrument==="flute"?"sine":instrument==="organ"?"square":
-        instrument==="sine"?"sine":"triangle";
-      osc.frequency.setValueAtTime(440*Math.pow(2,(midi-69)/12),start);
-      const peak=velocity*.16/Math.sqrt(notes.length);
-      gain.gain.setValueAtTime(.0001,start);
-      gain.gain.exponentialRampToValueAtTime(Math.max(.001,peak),start+.018);
-      if(instrument==="piano")
-        gain.gain.exponentialRampToValueAtTime(.0001,start+Math.min(duration,2.8));
-      else{
-        gain.gain.setValueAtTime(Math.max(.001,peak*.78),start+Math.max(.03,duration-.08));
-        gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
-      }
-      osc.connect(gain);gain.connect(MIDI_PLAYER.master);
-      osc.start(start);osc.stop(start+Math.max(.10,duration)+.04);
-      MIDI_PLAYER.active.push(osc);scheduled++;
-    }
-  }
-  if(!scheduled)throw new Error("none of the MIDI notes were valid");
-  const totalSeconds=Math.min(endSeconds+.3,91);
-  MIDI_PLAYER.playing=true;MIDI_PLAYER.title=String(args.title||"camera score").slice(0,80);
-  MIDI_PLAYER.timer=setTimeout(()=>{
-    MIDI_PLAYER.active=[];MIDI_PLAYER.playing=false;MIDI_PLAYER.timer=null;
-    if(MIDI_PLAYER.resumeMic){
-      MIDI_PLAYER.resumeMic=false;
-      try{if(NATIVE&&NATIVE.setMicPaused&&!EARS.paused&&!VOICE.holdMic)NATIVE.setMicPaused(false);}catch(e){}
-    }
-  },totalSeconds*1000);
-  FACE.set("playful",Math.min(12000,totalSeconds*1000),{source:"state",reason:"playing with a melody",confidence:.95});
-  return "playing "+scheduled+" MIDI notes from "+MIDI_PLAYER.title+
-    " at "+Math.round(tempo)+" BPM for about "+Math.round(totalSeconds)+" seconds";
-}
+// Public tool wrappers; the offline player owns cancellation and full scores.
+function stopMidiPlayback(){return musicStopByUser();}
+async function playMidiScore(args){return musicPlay(args);}
 
 /* ------------------------------------------------------ durable self schedule
    A timed intention wakes the existing executive with a concrete objective.
@@ -10431,6 +10478,9 @@ async function performBodySequence(args){
 }
 
 const TOOLS = [
+  {type:'function',function:{name:'list_stories',description:'List available complete bedtime-story editions and content notes. This is a bounded library, not every classic.',parameters:{type:'object',properties:{}}}},
+  {type:'function',function:{name:'read_story',description:'Read a complete child-to-child retelling aloud by default, with gentle character delivery. No long generated response needed. Ask list_stories for ids. Set historical true ONLY when original wording is requested. Resume preserves the exact saved edition; the place advances only after playback.',parameters:{type:'object',properties:{id:{type:'string'},resume:{type:'boolean'},historical:{type:'boolean',description:'Use the unchanged historical edition instead of the default child retelling.'}},required:['id']}}},
+  {type:'function',function:{name:'pause_story',description:'Pause reading immediately and keep the current passage for a later requested resume.',parameters:{type:'object',properties:{}}}},
   {type:'function',function:{name:'start_walking',description:'Camera-checked walking. Small forward drift corrections retain the destination. Hazards, Stop, lost supervision or deadline halt. Verify arrival separately.',parameters:{type:'object',properties:{direction:{type:'string',enum:['forward','backward']},pace:{type:'string',enum:['creep','slow','fast','run']},target:{type:'string'},corridor:{type:'string',description:'Visible route boundaries, e.g. bins left, tape right; max 240 chars.'},max_seconds:{type:'number',minimum:10,maximum:600}},required:['direction']}}},
   {type:'function',function:{name:'stop_walking',description:'Stop the ongoing walking session before changing course, inspecting nearby arrival, or answering a Stop request. Keeps the current feet-down pose where possible; emergency Stop remains separate.',parameters:{type:'object',properties:{reason:{type:'string'}}}}},
   {type:'function',function:{name:'estimate_travel',description:'Estimate cycles for a supplied distance using owner-measured gait, pace, direction and surface. Read-only; no movement or camera ranging. Missing calibration returns unknown.',parameters:{type:'object',properties:{distance_ft:{type:'number',minimum:0,maximum:1000},stop_short_ft:{type:'number',minimum:0,maximum:1000},pace:{type:'string',enum:['saved','creep','slow','fast','run']},direction:{type:'string',enum:['forward','backward']},surface:{type:'string'}},required:['distance_ft']}}},
@@ -10629,16 +10679,21 @@ const TOOLS = [
       needsVision:{type:"boolean",description:"True only when answering requires a fresh frame from the current camera."}
     },required:["type","task"]} } },
   { type:"function", function:{
-    name:"play_midi", description:"Play a locally synthesized MIDI-note performance when requested or when it meaningfully advances a creative autonomous task. For photographed sheet music, inspect a fresh back-camera frame and do not invent unreadable notes.",
+    name:"play_midi", description:"Compose and play original music with title/tempo/events, or replay a saved compositionId from list_compositions. New note-based pieces are saved to the local songbook when space is available. Create a motif, development and an ending reflecting the requested mood/theme. instrument:hum synthesizes the melody, not sung lyrics. Use song:fur_elise only for the complete original Beethoven score, never a new variation. For sheet music inspect a fresh frame and never invent unreadable notes.",
     parameters:{type:"object",properties:{
       title:{type:"string"},tempo:{type:"number",description:"30 to 240 beats per minute"},
-      instrument:{type:"string",enum:["piano","organ","flute","sine"]},
+      song:{type:"string",enum:["fur_elise"]},
+      compositionId:{type:"string",description:"Exact ID from list_compositions; replays that piece’s saved notes."},
+      instrument:{type:"string",enum:["piano","hum","organ","flute","sine"]},
       events:{type:"array",maxItems:160,items:{type:"object",properties:{
         notes:{type:"array",items:{type:"integer",minimum:21,maximum:108},minItems:1,maxItems:8,description:"MIDI pitches; use multiple simultaneous notes for a chord"},
         startBeat:{type:"number",minimum:0},durationBeats:{type:"number",minimum:.125,maximum:16},
         velocity:{type:"number",minimum:.08,maximum:1}
       },required:["notes","startBeat","durationBeats"]}}
-    },required:["tempo","instrument","events"]} } },
+    },required:["instrument"]} } },
+  { type:"function", function:{
+    name:"list_compositions", description:"List my locally saved original songs and pieces with exact IDs for replay. This does not play audio.",
+    parameters:{type:"object",properties:{}} } },
   { type:"function", function:{
     name:"stop_midi", description:"Stop OwlBot's local MIDI playback. Use when the person asks the sheet-music performance to stop.",
     parameters:{type:"object",properties:{}} } },
@@ -10813,6 +10868,9 @@ async function releaseGaze(){
 }
 
 async function runTool(name, args, context={}){
+  if(name==='list_stories')return JSON.stringify(storyLibrary().map(({id,title,kind,edition,words,contentNote,gentle})=>({id,title,kind,defaultEdition:kind==='child',edition,words,contentNote,gentle})));
+  if(name==='read_story'){try{return storyReadRequest(args);}catch(e){return 'Story not started: '+e.message;}}
+  if(name==='pause_story'){storyPause();return 'Story paused; current passage saved';}
   // Model arguments are requests, not authority. Each physical branch still
   // checks enabled capabilities, navigation ownership and controller state.
   // Tool results are evidence with limits, not prose to blindly speak aloud.
@@ -11033,7 +11091,9 @@ async function runTool(name, args, context={}){
     if(name==="read_sensors"){
       const report=nativeSensorLines().join("\n");
       mindLog("&rarr; refreshed hardware sensors");
-      return report;
+      // A successfully read report may describe unavailable hardware. That is
+      // evidence, not a failed tool invocation; the ledger uses explicit status.
+      return JSON.stringify({ok:true,report});
     }
     if(name==="get_position"){
       let n=readNativeSensors();
@@ -11127,14 +11187,22 @@ async function runTool(name, args, context={}){
     }
     if(name==="delegate_background_task"){
       const origin=MIND.activeUserTurn?"owner":MIND.autonomyTurn?"autonomous":"agent";
+      if(args?.type==='midi'&&origin==='owner'&&activeBackgroundJobs().some(j=>j.type==='midi'&&j.origin==='owner'))
+        return 'The requested music already has a worker. '+musicRequestStatus();
       const result=delegateBackgroundTask(args||{},origin);
       mindLog("&rarr; "+result);return result;
     }
+    if(name==='list_compositions')return JSON.stringify(musicCompositions());
     if(name==="play_midi"){
       if(!context.backgroundJob&&activeBackgroundJobs().some(x=>x.type==="midi"))
         return "the background MIDI sub-agent already owns this music job; keep the foreground conversation available and wait for its completion";
+      const requestedMusic=musicLatestRequest();
+      if(!context.backgroundJob&&requestedMusic?.musicRequest?.variation&&args?.song&&
+          !/\b(?:original|complete|whole|full|f[uü]r elise|for elise)\b/i.test(MIND.activeRequest?.text||''))
+        return 'Not played: the requested new composition is not the complete original. '+musicRequestStatus();
       const result=await playMidiScore(args||{});
-      mindLog("&rarr; "+result);logEpisode("played sheet music locally","worked",args.title||"camera score");
+      mindLog("&rarr; "+result);
+      if(MIDI_PLAYER.playing)logEpisode("started local music playback","started",args.song||args.title||"local score");
       return result;
     }
     if(name==="stop_midi"){
@@ -11200,7 +11268,7 @@ async function runTool(name, args, context={}){
     }
     if(name==="speak"){
       if(context.unsolicited&&!socialInitiativeEnabled())return 'Owner paused unsolicited conversation; nothing spoken.';
-      const text = physicalActionSpeech(spokenReply(args.text),context.speechRequest,context.urgentSpeech);
+      const text = musicGroundReply(physicalActionSpeech(spokenReply(args.text),context.speechRequest,context.urgentSpeech),context.speechRequest);
       mindLog(text ? "spoke through voice" : "discarded private reasoning");
       if(!text)return 'Routine action narration remained quiet; use the action tool instead.';
       const submitted=say(text);
@@ -11624,7 +11692,9 @@ function speak(text){ say(text); }
 function nativeSensorLines(){
   const n=readNativeSensors();
   if(!n) return ["native Android sensor bridge: unavailable"];
-  const lines=[];
+  const lines=['Local sensor interpretation: '+sensorAwarenessContext()];
+  if(APP.resting||n.sensorMode==='paused')return lines;
+  lines.push('Per-sensor acquisition/accuracy: '+JSON.stringify(n.samples||{}));
   const list=Array.isArray(n.availableSensors) ? n.availableSensors : [];
   if(list.length) lines.push("active phone sensors: "+list.join("; "));
   const m=n.motion||{};
@@ -11900,6 +11970,8 @@ async function describeFrameForBrain(base,visionModel,img,signal,reason="current
     systemInstruction=freshInvestigationPrompt(reason,question);
     userInstruction='Inspect the fresh '+S.cameraFacing+' image. Base the answer on its pixels only.';
   }
+  userInstruction+=' Nonvisual context (not pixel evidence): '+sensorAwarenessContext()+
+    ' Never infer an object, clear path or arrival from these sensors.';
   const route=localVisionRoute();
   const thermal=Number(LOCAL_VISION.status?.thermalStatus)||0;
   let report="";
@@ -12347,10 +12419,11 @@ function nextVerifiedSensorEvent(){
 
 async function mindTick(){
   // Foreground scheduler: build current context, request a model response,
-  // dispatch allowed tools and finish the human reply. Conversation, perception
-  // and autonomous turns share this path; background jobs must yield resources
-  // rather than recursively starting another foreground turn.
+  // dispatch allowed tools and finish the human reply. Background work and
+  // active music/story playback yield when a human turn takes ownership.
   if(!MIND.on || MIND.busy || APP.settings || APP.resting) return;
+  if(typeof musicOwnsResources==='function'&&musicOwnsResources()&&!MIND.pendingUser)return;
+  if(typeof storyOwnsResources==='function'&&storyOwnsResources()&&!MIND.pendingUser)return;
   if(MIND.pendingUser&&Date.now()<(MIND.rateRetryAt||0))return;
   if(Date.now()>=(MIND.rateRetryAt||0))MIND.rateRetryAt=0;
   const userTurn = String(MIND.pendingUser||"").trim();
@@ -12575,6 +12648,7 @@ async function mindTick(){
       }
       // Content accompanying a tool call is an intermediate thought, not a
       // second answer. Speak only after the final tool-free model message.
+      if(line&&!calls.length)line=musicGroundReply(line,userTurn);
       if(line && !calls.length){
         mindLog("voice reply");
         if(userTurn){
@@ -13042,20 +13116,19 @@ function queueUserMindTurn(text,options={}){
   if(socialPreference!==null)setSocialInitiativeEnabled(socialPreference);
   if(handleAgentOnboarding(text))return true;
   if(handleExactSpeechRequest(text))return true;
+  if(typeof storyHandleIntent==='function'&&storyHandleIntent(text))return true;
+  if(typeof musicHandleIntent==='function'&&musicHandleIntent(text))return true;
   if(handleDirectBodyIntent(text))return true;
   ownerRejectsCurrentWork(text);
   ownerTopicBoundary(text);
   MIND.pendingAnswerContext=captureSocialAnswer(text);
   MIND.nextSocialAt=now()+(45+Math.random()*15)*1000;
   rememberVisualCorrection(text);
-  const cleanText=String(text||"").trim();
-  if(/\b(?:play|compose|create|make up|write)\b.{0,90}\b(?:midi|song|tune|melody|music)\b/i.test(cleanText)&&
-     !/\b(?:pandora|spotify|youtube|sheet music|stop|cancel)\b/i.test(cleanText)){
-    delegateBackgroundTask({type:"midi",task:"Create and play the music the person requested: "+cleanText},"owner");
-  }
+  if(typeof musicPrepareOwnerRequest==='function')musicPrepareOwnerRequest(text);
   const queuedText=String(text||"").trim();
   if(!queuedText)return;
-  const request={id:++MIND.userSequence,text:queuedText,t:now(),source:options.source||'voice',answerContext:MIND.pendingAnswerContext};
+  const request={id:++MIND.userSequence,text:queuedText,t:now(),source:options.source||'voice',answerContext:MIND.pendingAnswerContext,
+    storyQuestion:typeof storyQuestionForTurn==='function'?storyQuestionForTurn(queuedText):null};
   MIND.userQueue.push(request);
   if(typeof inputDelivery==='function')inputDelivery('queued','Queued',request);
   // Human speech may interrupt autonomous work, but it must not abort an
@@ -13174,38 +13247,8 @@ window.onNativeMicLevel = v => {
 /* Continuous hearing also exposes a tiny local-only pitch summary. It is not
    audio and cannot reconstruct speech; it lets OwlBot answer sustained humming
    or music with a short playful MIDI motif. */
-const MUSICAL_EAR={samples:[],lastSoundAt:0,lastEchoAt:0,timer:null};
-window.onNativeSoundFeature = payload => {
-  if(APP.resting||THERMAL.paused||VOICE.busy||MIDI_PLAYER.playing)return;
-  let p;try{p=JSON.parse(payload);}catch(e){return;}
-  const t=Date.now(),midi=Number(p.midi),confidence=Number(p.confidence)||0,rms=Number(p.rms)||0;
-  MUSICAL_EAR.lastSoundAt=t;
-  MUSICAL_EAR.samples.push({t,midi:Number.isFinite(midi)?midi:0,confidence,rms});
-  MUSICAL_EAR.samples=MUSICAL_EAR.samples.filter(x=>t-x.t<5000).slice(-30);
-  clearTimeout(MUSICAL_EAR.timer);
-  MUSICAL_EAR.timer=setTimeout(considerMusicalEcho,650);
-};
-async function considerMusicalEcho(){
-  const samples=MUSICAL_EAR.samples.slice();MUSICAL_EAR.samples=[];
-  if(samples.length<6||Date.now()-MUSICAL_EAR.lastEchoAt<20000||MIND.busy||VOICE.busy||
-     MIDI_PLAYER.playing||APP.resting||THERMAL.paused)return false;
-  const tonal=samples.filter(x=>x.midi>=36&&x.midi<=96&&x.confidence>=.58);
-  const span=samples[samples.length-1].t-samples[0].t;
-  if(span<900||tonal.length/samples.length<.68)return false;
-  const notes=[];
-  for(const sample of tonal){
-    const note=Math.round(sample.midi);
-    if(!notes.length||Math.abs(notes[notes.length-1]-note)>=1)notes.push(note);
-  }
-  const motif=notes.slice(-8);if(!motif.length)return false;
-  MUSICAL_EAR.lastEchoAt=Date.now();
-  FACE.set("playful",4500,{source:"sound",reason:"a steady musical tone invited a reply",confidence:.88});
-  try{
-    await playMidiScore({title:"a little tune I heard",tempo:112,instrument:"sine",
-      events:motif.map((note,i)=>({notes:[note],startBeat:i*.65,durationBeats:.55,velocity:.48}))});
-    log("musical ear echoed "+motif.length+" locally detected notes");return true;
-  }catch(e){log("musical echo failed: "+e.message,"w");return false;}
-}
+window.onNativeSoundFeature = payload => musicPitchFeature(payload);
+async function considerMusicalEcho(){return musicFinishCapture();}
 
 function startListening(){
   recogListening = true;
@@ -13923,6 +13966,7 @@ $("#btnStop").onclick = ()=>{
   stopChannelAdjustment();
   stopServoTest("Servo test stopped by emergency stop.");
   stopRun(); stopLearn(); stopMind(); wsSend({t:"stop"});
+  hush();
   AUTONOMY.enabled=false;AUTONOMY.state="off";AUTONOMY.nextCycleAt=0;autonomySave();
   log("EMERGENCY STOP — autonomy disabled and body stopped","w");
 };
@@ -14294,6 +14338,7 @@ if(!$("#relay").value.trim() ||
 applyVoiceUI();
 try{EARS.handsFreeWanted=localStorage.getItem(HANDS_FREE_WANTED_KEY)==="1";}catch(e){}
 applyHearingUI(false);
+if(APP.resting)pauseRestingSensors();
 if(!APP.resting&&$("#vInputMode").value==="handsfree"&&EARS.handsFreeWanted)
   setTimeout(()=>setHandsFreeConversation(true,{persist:false}),700);
 markSource();

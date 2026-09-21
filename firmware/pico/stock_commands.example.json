@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "pattern_a_direction": null,
+  "pan_inverted": false,
+  "turn_fraction": 0.15,
+  "head_hold_enabled": false
+}

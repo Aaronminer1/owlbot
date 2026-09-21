@@ -74,3 +74,9 @@ ui-review*/
 *.mp4
 *.uf2
 *.local.json
+
+# Pico runtime identity, calibration and taught movements are owner-specific.
+firmware/pico/*.json
+!firmware/pico/stock_commands.example.json
+firmware/pico/control_token.txt
+firmware/pico/main.py.pre*
