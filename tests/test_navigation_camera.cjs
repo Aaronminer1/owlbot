@@ -61,6 +61,7 @@ function fixture(){
  // Late model answers cannot attach rear pixels to a front-facing report.
  let finish;
  const v={Date,JSON,String,Number,Math,cameraGeneration:1,identityEnrollmentActive:()=>false,S:{cameraFacing:'back'},MIND:{},LOCAL_VISION:{status:{}},
+  sensorAwarenessContext:()=> 'motion unknown',
   cachedVisionReport:()=>'',localVisionRoute:()=> 'local',localVisionReady:()=>true,
   localVisionInfer:()=>new Promise(resolve=>finish=()=>resolve({text:'Rear wall',backend:'test',latencyMs:1})),log(){},visualAttentionFromReport(){}};
  vm.createContext(v);vm.runInContext(part('function freshInvestigationPrompt(','function perceptionTerms('),v);

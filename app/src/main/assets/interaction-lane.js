@@ -4,6 +4,10 @@
  * Once a tool has side effects, retrying the whole turn could move twice: fail
  * visibly instead. The UI delivery history is not an action replay queue. */
 function humanConversationOwnsResources(){
+  if(typeof storyOwnsResources==='function'&&storyOwnsResources())return true;
+  // A paused story question is still an active shared activity. Do not turn
+  // the child's thinking time into an unrelated social/vision/model turn.
+  if(typeof storyDiscussionActive==='function'&&storyDiscussionActive())return true;
   if(typeof identityEnrollmentActive==='function'&&identityEnrollmentActive())return true;
   // Active locomotion also owns inference; conversation can still enter its user lane.
   if(typeof NW!=='undefined'&&NW.running)return true;
@@ -14,6 +18,8 @@ function humanConversationOwnsResources(){
     (typeof VOICE!=='undefined'&&VOICE.busy)||Date.now()-(MIND.lastHumanInputAt||0)<45000);
 }
 function markHumanActivity(){
+  if(typeof storyHumanActivity==='function')storyHumanActivity();
+  if(typeof musicHumanActivity==='function')musicHumanActivity();
   MIND.lastHumanInputAt=Date.now();
   if(MIND.abort&&!MIND.activeUserTurn)MIND.abort.abort();
   if(typeof PERCEPTION!=='undefined')PERCEPTION.abort?.abort();
@@ -63,8 +69,8 @@ function retryHumanDelivery(text,error){
 async function waitForHumanSpeechBeforePlayback(generation){
   const started=Date.now();
   while(EARS.on||['hearing','transcribing'].includes(EARS.handsFreeState)){
-    if(generation!==VOICE.generation||APP.resting||Date.now()-started>45000)throw Error('cancelled for human speech');
+    if(generation!==VOICE.generation||(APP.resting&&!(typeof storyPlaybackAllowed==='function'&&storyPlaybackAllowed()))||Date.now()-started>45000)throw Error('cancelled for human speech');
     await new Promise(resolve=>setTimeout(resolve,100));
   }
-  if(generation!==VOICE.generation||APP.resting)throw Error('cancelled before playback');
+  if(generation!==VOICE.generation||(APP.resting&&!(typeof storyPlaybackAllowed==='function'&&storyPlaybackAllowed())))throw Error('cancelled before playback');
 }

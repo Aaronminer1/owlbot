@@ -15,7 +15,7 @@ async function scenario(cycles,{saved=3,blocked=0,stopAt=0,direction='forward',b
       return {named_walk:status(),walk_plan:{cycles:saved},channel_state:{channels:[]}};
     }};
   vm.createContext(box);vm.runInContext(source.slice(0,source.indexOf("$('#btnNamedWalkSave').onclick=")),box);
-  box.checkNamedWalkPath=async(dir,guard)=>{assert.equal(dir,direction);checks++;if(checks===stopAt)box.CHANNEL_SETUP.generation++;guard();if(checks===blocked)throw Error('I cannot proceed in that direction: box');};
+  box.checkNamedWalkPath=async(dir,guard)=>{assert.equal(dir,direction);checks++;if(checks===stopAt)box.CHANNEL_SETUP.generation++;guard();if(checks===blocked)throw Error('I cannot proceed in that direction: box');return {capturedAt:Date.now()};};
   let result,error;try{result=await box.runNamedForwardWalk({cycles,direction,pace});}catch(e){error=e.message;}
   assert.equal(vm.runInContext('NW.running',box),false);
   assert(!calls.some(c=>c.action==='walk_save'),'per-request count must not edit saved routine');

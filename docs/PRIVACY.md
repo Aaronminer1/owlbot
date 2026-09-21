@@ -42,6 +42,21 @@ Recent conversation and relevant excerpts form the active model context. Older c
 
 Conversation hearing can use push-to-talk or an owner-enabled continuous mode. In continuous mode, one Android `AudioRecord` stream performs voice-activity detection locally; silence is not sent, and only a detected completed utterance is handed to Android system transcription on Android 13 or newer. Older Android versions require an optional user-configured transcription provider for continuous mode. The microphone pauses while OwlBot speaks. Rest mode stops model activity, background workers, internet work, camera and microphone use, and body motion until touch wakes the app.
 
+## Music, stories and the Pico
+
+Explicit hum copying opens a bounded pitch-only microphone capture; it does not
+submit that hum to speech transcription. Scores, imported text, compositions and
+reading checkpoints are stored locally. Narration uses the installed Android
+TTS engine; whether synthesis needs a network depends on that engine and voice.
+Talk-button or typed story questions pause narration and send bounded current-scene
+context to the selected model provider. Narration does not open an always-on mic.
+An explicit audio preview in Settings is distinct from autonomous awake activity.
+
+The Pico relay exposes command/liveness diagnostics, not camera images or
+verified motor feedback. Its pairing ID is derived from chip identity and printed
+on USB at startup. Do not publish that ID, serial captures or filled-in credentials.
+See [the firmware trust boundaries](../firmware/pico/README.md#security-and-electrical-limits).
+
 ## Credentials
 
 The repository contains no API keys. Users provide their own key in the app. Source code only contains endpoint URLs, empty fields, placeholders, environment-variable names, and encryption logic.

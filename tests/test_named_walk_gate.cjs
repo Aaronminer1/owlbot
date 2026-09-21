@@ -23,7 +23,7 @@ async function scenario({blocked=0,rest=false,settings=false,hot=false,fallen=fa
   };
   vm.createContext(box);vm.runInContext(prefix,box);
   vm.runInContext('NW.supervised='+Boolean(enabled),box);
-  box.mockCheck=async(dir,guard)=>{assert.equal(dir,direction);checks++;if(checks===stopAt)box.CHANNEL_SETUP.generation++;guard();if(checks===blocked)throw Error('I cannot proceed: obstacle');return {path:'clear'};};
+  box.mockCheck=async(dir,guard)=>{assert.equal(dir,direction);checks++;if(checks===stopAt)box.CHANNEL_SETUP.generation++;guard();if(checks===blocked)throw Error('I cannot proceed: obstacle');return {path:'clear',capturedAt:Date.now()};};
   vm.runInContext('checkNamedWalkPath=mockCheck',box);
   let error;try{await box.runNamedForwardWalk({bench,direction,supervised,manual,continuous});}catch(e){error=e.message;}
   return {calls,checks,error};

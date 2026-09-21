@@ -107,36 +107,41 @@ import org.xmlpull.v1.XmlPullParser;
  * entirely, and it also means the app works with no internet at all - which is
  * the point of the direct transport.
  *
- * The Java side supplies capabilities that WebView alone cannot reliably own:
+ * The Java side exists to supply the four things a WebView cannot do itself:
  *   - runtime camera/mic permission, and the WebView-level grant that follows it
  *   - text to speech (Android WebView has no Web Speech synthesis)
  *   - speech recognition (likewise)
  *   - keeping the screen on and the phone awake while the creature is running
  *
- * It also owns native sensors, Keystore storage, app intents and service
- * adapters. Most decision/UI logic stays in the page; a desktop browser does
- * not provide the same capabilities when OwlBotNative is absent.
+ * Everything else stays in the page, so the same file runs unchanged in a
+ * desktop browser.
  */
 public class MainActivity extends Activity implements SensorEventListener, LocationListener {
 
     private static final String TAG = "OwlBot";
     private static final String PAGE = "file:///android_asset/growbot-brain.html";
     private static final int REQ_PERMS = 4711;
+    private static final int REQ_MIDI_FILE = 4712;
     private static final String SECRET_ALIAS = "owlbot-secrets-v1";
     private static final String SECRET_PREFS = "owlbot_secure";
     private static final String PERMISSION_PREFS = "owlbot_permissions";
 
     private WebView web;
+    private boolean activityResumed = false;
+    private android.webkit.ValueCallback<Uri[]> fileCallback;
     private TextToSpeech tts;
     private boolean ttsReady = false;
+    private volatile String activeTaggedSpeech = "";
     private SpeechRecognizer recognizer;
-    private boolean micPaused = false;    // user pause, or we are talking
+    private boolean micPaused = true;     // wait for restored WebView hearing intent
     private boolean listening = false;    // a recognition session is live
     private long lastRms = 0;
     private long sessionStart = 0;
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean handsFreeEnabled = false;
     private volatile boolean handsFreeRunning = false;
+    private volatile boolean melodyListenOnly = false;
+    private volatile long melodySession = 0;
     private volatile long handsFreeCaptureGeneration = 0;
     private volatile long handsFreeResumeAt = 0;
     private volatile AudioRecord handsFreeRecorder;
@@ -166,9 +171,14 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private float nativeHumidity = Float.NaN;
     private float nativeSteps = Float.NaN;
     private long nativeSensorAt = 0;
+    private long sensorSessionAt = 0;
     private volatile Location lastLocation;
     private boolean locationUpdates = false;
-    private boolean hardwareSensorsPaused = false;
+    // Wait for the WebView to restore Sleep/awake intent, including cold starts.
+    private boolean hardwareSensorsPaused = true;
+    private final java.util.Map<Integer, Long> sensorSampleTimes = new java.util.HashMap<>();
+    private final java.util.Map<Integer, Integer> sensorAccuracies = new java.util.HashMap<>();
+    private final java.util.Map<Integer, Sensor> registeredSensors = new java.util.HashMap<>();
     private boolean sensorLowPower = false;
 
     // A WebView permission request can arrive before the OS has granted us the
@@ -317,6 +327,18 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         });
         web.setWebChromeClient(new WebChromeClient() {
             @Override
+            public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                // The user explicitly chooses a document; no directory scan or
+                // broad storage permission. The JS parser validates size/type.
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = callback;
+                try { startActivityForResult(params.createIntent(), REQ_MIDI_FILE); }
+                catch (Exception e) { fileCallback.onReceiveValue(null); fileCallback = null; }
+                return true;
+            }
+
+            @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 main.post(() -> handleWebPermission(request));
             }
@@ -345,16 +367,20 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 // costs nothing compared to real viseme analysis.
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {
+                        if (taggedSpeechEvent(id, "start")) return;
                         toJs("onSpeechStart", "");
                     }
                     @Override public void onDone(String id) {
+                        if (taggedSpeechEvent(id, "done")) return;
                         toJs("onSpeechEnd", "");
                     }
                     @Override public void onError(String id) {
+                        if (taggedSpeechEvent(id, "error")) return;
                         toJs("onSpeechEnd", "");
                     }
                     @Override
                     public void onRangeStart(String id, int start, int end, int frame) {
+                        if (id != null && id.startsWith("voice-") && !id.equals(activeTaggedSpeech)) return;
                         // word boundary -> one mouth flap
                         toJs("onSpeechRange", String.valueOf(end - start));
                     }
@@ -471,6 +497,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             if (sensorManager.registerListener(this, sensor, delay)) {
                 synchronized (sensorLock) {
                     activeSensors.add(label + " (" + sensor.getName() + ")");
+                    registeredSensors.put(type, sensor);
                 }
             }
         } catch (SecurityException e) {
@@ -483,6 +510,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         sensorManager.unregisterListener(this);
         synchronized (sensorLock) {
             activeSensors.clear();
+            registeredSensors.clear();
+            sensorSampleTimes.clear();
+            sensorAccuracies.clear();
+            sensorSessionAt = System.currentTimeMillis();
         }
         int motionDelay = sensorLowPower
                 ? SensorManager.SENSOR_DELAY_NORMAL : SensorManager.SENSOR_DELAY_GAME;
@@ -515,7 +546,15 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     @Override
     public void onSensorChanged(SensorEvent event) {
         synchronized (sensorLock) {
+            if (hardwareSensorsPaused || !registeredSensors.containsKey(event.sensor.getType())) return;
             nativeSensorAt = System.currentTimeMillis();
+            // SensorEvent time measures acquisition, not callback delivery. A delayed
+            // batch must not make old evidence appear fresh. Keep each sensor separate.
+            long ageMs = Math.max(0L, (android.os.SystemClock.elapsedRealtimeNanos()
+                    - event.timestamp) / 1000000L);
+            if (nativeSensorAt - ageMs < sensorSessionAt) return;
+            sensorSampleTimes.put(event.sensor.getType(), nativeSensorAt - ageMs);
+            sensorAccuracies.put(event.sensor.getType(), event.accuracy);
             switch (event.sensor.getType()) {
                 case Sensor.TYPE_ACCELEROMETER:
                     copyVector(nativeAccel, event.values);
@@ -567,7 +606,27 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Each reading remains useful with its hardware-reported precision.
+        synchronized (sensorLock) {
+            sensorAccuracies.put(sensor.getType(), accuracy);
+        }
+    }
+
+    private static String sensorField(int type) {
+        switch (type) {
+            case Sensor.TYPE_ACCELEROMETER: return "accelerationMps2";
+            case Sensor.TYPE_LINEAR_ACCELERATION: return "linearAccelerationMps2";
+            case Sensor.TYPE_GRAVITY: return "gravityMps2";
+            case Sensor.TYPE_GYROSCOPE: return "gyroscopeRadS";
+            case Sensor.TYPE_MAGNETIC_FIELD: return "magneticFieldUt";
+            case Sensor.TYPE_ROTATION_VECTOR: return "orientationDegAzimuthPitchRoll";
+            case Sensor.TYPE_LIGHT: return "lightLux";
+            case Sensor.TYPE_PRESSURE: return "pressureHpa";
+            case Sensor.TYPE_PROXIMITY: return "proximityCm";
+            case Sensor.TYPE_AMBIENT_TEMPERATURE: return "ambientTemperatureC";
+            case Sensor.TYPE_RELATIVE_HUMIDITY: return "relativeHumidityPercent";
+            case Sensor.TYPE_STEP_COUNTER: return "stepsSinceBoot";
+            default: return "unknown";
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -671,6 +730,19 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 JSONArray available = new JSONArray();
                 for (String name : activeSensors) available.put(name);
                 root.put("availableSensors", available);
+                JSONObject samples = new JSONObject();
+                for (java.util.Map.Entry<Integer, Sensor> entry : registeredSensors.entrySet()) {
+                    int type = entry.getKey();
+                    Sensor sensor = entry.getValue();
+                    JSONObject sample = new JSONObject();
+                    sample.put("active", !hardwareSensorsPaused);
+                    sample.put("sampleAt", sensorSampleTimes.containsKey(type) ? sensorSampleTimes.get(type) : 0L);
+                    sample.put("accuracy", sensorAccuracies.containsKey(type) ? sensorAccuracies.get(type) : -1);
+                    sample.put("onChange", sensor.getReportingMode() == Sensor.REPORTING_MODE_ON_CHANGE);
+                    sample.put("maximumRange", sensor.getMaximumRange());
+                    samples.put(sensorField(type), sample);
+                }
+                root.put("samples", samples);
 
                 JSONObject environment = new JSONObject();
                 putFinite(environment, "lightLux", nativeLight);
@@ -1353,9 +1425,25 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             return ttsReady;
         }
 
+        /** Each narration passage has an id so an old completion cannot mark
+         * the next passage read after Stop or a rapid restart. */
+        @JavascriptInterface
+        public void speakTagged(final String text, final String id, final int pitch, final int rate) {
+            main.post(() -> {
+                if (!ttsReady || id == null || !id.startsWith("voice-")) {
+                    toJs("onNativeDeviceSpeech", String.valueOf(id) + "|error"); return;
+                }
+                activeTaggedSpeech = id;
+                tts.setPitch(Math.max(.5f, Math.min(2f, 1f + pitch / 100f)));
+                tts.setSpeechRate(Math.max(.5f, Math.min(2f, 1f + rate / 100f)));
+                if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), id) == TextToSpeech.ERROR)
+                    taggedSpeechEvent(id, "error");
+            });
+        }
+
         @JavascriptInterface
         public void stopSpeaking() {
-            main.post(() -> { if (ttsReady) tts.stop(); });
+            main.post(() -> { activeTaggedSpeech = ""; if (ttsReady) tts.stop(); });
         }
 
         /** Listen once; the result comes back as window.onNativeSpeech(text). */
@@ -1399,6 +1487,33 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                         handsFreeResumeAt = System.currentTimeMillis() + 180;
                     startHandsFreeCapture();
                 }
+            });
+        }
+
+        /** Explicit, bounded pitch-only capture. Never submits humming to STT.
+         * Does not change the owner's saved hands-free or paused preferences. */
+        @JavascriptInterface
+        public void setMelodyListening(final boolean enabled, final long session) {
+            main.post(() -> {
+                stopListening();
+                stopHandsFreeCapture();
+                if (!enabled) {
+                    if (handsFreeEnabled && !micPaused) startHandsFreeCapture();
+                    return;
+                }
+                if (!granted(Manifest.permission.RECORD_AUDIO)) {
+                    toJs("onNativeMusicCaptureError", "Microphone permission is required to copy a hum.");
+                    return;
+                }
+                melodyListenOnly = true;
+                melodySession = session;
+                startHandsFreeCapture();
+                main.postDelayed(() -> {
+                    if (melodyListenOnly && melodySession == session) {
+                        stopHandsFreeCapture();
+                        if (handsFreeEnabled && !micPaused) startHandsFreeCapture();
+                    }
+                }, 12500);
             });
         }
 
@@ -1810,13 +1925,21 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         toJs("onNativeMicState", micPaused ? "paused" : "idle");
     }
 
+    private boolean taggedSpeechEvent(String id, String event) {
+        if (id == null || !id.startsWith("voice-")) return false;
+        if (id.equals(activeTaggedSpeech)) toJs("onNativeDeviceSpeech", id + "|" + event);
+        return true;
+    }
+
     private void startHandsFreeCapture() {
-        if (!handsFreeEnabled || micPaused || handsFreeRunning) return;
+        if (!activityResumed) return;
+        if ((!melodyListenOnly && (!handsFreeEnabled || micPaused)) || handsFreeRunning) return;
         final String key = loadSecretValue("voice_api");
         final int rate = 16000;
         final int min = AudioRecord.getMinBufferSize(rate,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         if (min <= 0) {
+            if (melodyListenOnly) toJs("onNativeMusicCaptureError", "Microphone is unavailable.");
             toJs("onNativeHandsFreeState", "unavailable");
             return;
         }
@@ -1827,6 +1950,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             handsFreeRecorder.startRecording();
         } catch (Exception e) {
             Log.w(TAG, "hands-free mic failed", e);
+            if (melodyListenOnly) toJs("onNativeMusicCaptureError", "Could not open the microphone for humming.");
             handsFreeRecorder = null;
             toJs("onNativeHandsFreeState", "unavailable");
             return;
@@ -1836,14 +1960,16 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         final AudioRecord capture = handsFreeRecorder;
         handsFreeThread = new Thread(() -> handsFreeLoop(rate, key, capture, captureGeneration), "owlbot-ears");
         handsFreeThread.start();
-        toJs("onNativeHandsFreeState", "starting");
+        toJs("onNativeHandsFreeState", melodyListenOnly ? "melody" : "starting");
         main.postDelayed(() -> {
-            if (captureGeneration == handsFreeCaptureGeneration && handsFreeRunning && !micPaused)
+            if (captureGeneration == handsFreeCaptureGeneration && handsFreeRunning && !micPaused && !melodyListenOnly)
                 toJs("onNativeHandsFreeState", "listening");
         }, Math.max(0, handsFreeResumeAt - System.currentTimeMillis()));
     }
 
     private void stopHandsFreeCapture() {
+        melodyListenOnly = false;
+        melodySession = 0;
         handsFreeCaptureGeneration++;
         handsFreeRunning = false;
         handsFreeTranscribing = false;
@@ -1872,6 +1998,8 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         ArrayList<short[]> pre = new ArrayList<>();
         ByteArrayOutputStream utterance = null;
         SpeechActivityGate gate = new SpeechActivityGate();
+        PitchTracker pitchTracker = new PitchTracker();
+        final long pitchSession = melodySession;
         int voiced = 0, silence = 0, utteranceFrames = 0, featureFrames = 0;
         try {
             while (handsFreeRunning && captureGeneration == handsFreeCaptureGeneration) {
@@ -1881,17 +2009,21 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 double sum = 0;
                 for (int i = 0; i < n; i++) { double v = frame[i] / 32768.0; sum += v * v; }
                 double rms = Math.sqrt(sum / n);
-                if (++featureFrames >= 10) {
+                if (melodyListenOnly) pitchTracker.append(frame, n);
+                if (++featureFrames >= 3) { // 60 ms hop; 80 ms analysis window
                     featureFrames = 0;
-                    double[] pitch = estimatePitch(frame, n, rate, rms);
+                    double[] pitch = melodyListenOnly ? pitchTracker.estimate(rate) : new double[]{0, 0, rms};
                     String feature = String.format(Locale.US,
-                            "{\"midi\":%.2f,\"confidence\":%.3f,\"rms\":%.4f}",
-                            pitch[0], pitch[1], rms);
-                    if (rms >= .018) toJs("onNativeSoundFeature", feature);
+                            "{\"midi\":%.2f,\"confidence\":%.3f,\"rms\":%.4f,\"t\":%d,\"session\":%d}",
+                            pitch[0], pitch[1], pitch[2], android.os.SystemClock.elapsedRealtime(), pitchSession);
+                    if (melodyListenOnly) toJs("onNativeSoundFeature", feature);
                     toJs("onNativeHearingDiagnostic", String.format(Locale.US,
                             "{\"rms\":%.4f,\"threshold\":%.4f,\"transcribing\":%s}",
                             rms, gate.threshold(utterance != null), handsFreeTranscribing));
                 }
+                // Pitch-only mode retains silence timestamps for rhythm, but
+                // never constructs an utterance or starts a speech recognizer.
+                if (melodyListenOnly) continue;
                 boolean allowed = System.currentTimeMillis() >= handsFreeResumeAt;
                 if (allowed && !handsFreeTranscribing) gate.observeAmbient(rms);
                 boolean voice = allowed && !handsFreeTranscribing
@@ -1940,27 +2072,6 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         }
     }
 
-    /** Local-only autocorrelation pitch estimate. Raw microphone samples never leave this method. */
-    private static double[] estimatePitch(short[] frame, int n, int rate, double rms) {
-        if (rms < .018 || n < 160) return new double[]{0, 0};
-        int minLag = Math.max(1, rate / 900);
-        int maxLag = Math.min(n - 32, rate / 75);
-        double best = 0;
-        int bestLag = 0;
-        for (int lag = minLag; lag <= maxLag; lag++) {
-            double cross = 0, a = 0, b = 0;
-            for (int i = 0; i < n - lag; i++) {
-                double x = frame[i], y = frame[i + lag];
-                cross += x * y; a += x * x; b += y * y;
-            }
-            double corr = cross / Math.sqrt(Math.max(1.0, a * b));
-            if (corr > best) { best = corr; bestLag = lag; }
-        }
-        if (bestLag == 0 || best < .35) return new double[]{0, Math.max(0, best)};
-        double hz = (double) rate / bestLag;
-        double midi = 69.0 + 12.0 * (Math.log(hz / 440.0) / Math.log(2.0));
-        return new double[]{midi, best};
-    }
 
     private static void writePcm16(ByteArrayOutputStream out, short[] data, int n) {
         for (int i = 0; i < n; i++) { out.write(data[i] & 0xff); out.write((data[i] >>> 8) & 0xff); }
@@ -2240,6 +2351,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     @Override
     protected void onPause() {
         super.onPause();
+        activityResumed = false;
         if (sensorManager != null) sensorManager.unregisterListener(this);
         stopLocationUpdates();
         // Backgrounded: stop holding the mic. It comes back in onResume.
@@ -2248,7 +2360,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         // Never leave the legs driving because the user swiped away.
         if (web != null) {
             web.evaluateJavascript(
-                    "try{if(typeof stopRun==='function')stopRun();"
+                    "try{if(typeof storyPause==='function')storyPause('Story paused in background');if(typeof musicStop==='function')musicStop('Music paused in background');if(typeof stopRun==='function')stopRun();"
                     + "if(typeof stopMind==='function')stopMind();"
                     + "if(typeof wsSend==='function')wsSend({t:'stop'});}catch(e){}", null);
         }
@@ -2257,6 +2369,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         if (!hardwareSensorsPaused) {
             startHardwareSensors();
             startLocationUpdates();
@@ -2268,6 +2381,15 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_MIDI_FILE && fileCallback != null) {
+            fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
+            fileCallback = null;
+        }
+    }
+
+    @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack();
         else super.onBackPressed();
@@ -2275,6 +2397,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
 
     @Override
     protected void onDestroy() {
+        if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         if (sensorManager != null) sensorManager.unregisterListener(this);
         stopLocationUpdates();
         if (tts != null) { tts.stop(); tts.shutdown(); }

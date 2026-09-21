@@ -153,7 +153,7 @@ and camera frames may go to the selected model service; local storage does not
 mean every feature is offline. Read [PRIVACY.md](PRIVACY.md).
 
 The public edition excludes private model runtimes/downloaders, model weights,
-neural-voice transport, face embeddings backend and body firmware. It uses Android
+neural-voice transport and face embeddings backend. It uses Android
 device TTS. Face enrollment is visibly unavailable without the embedding backend;
 forgetting saved profiles remains possible. Do not “fix” that by copying private
 assets or enabling a nonfunctional enrollment button.
@@ -161,7 +161,7 @@ assets or enabling a nonfunctional enrollment button.
 Optional tools: `tools/mind-proxy.mjs` reads runtime environment credentials and
 requires a client token for non-loopback listening. The laptop Maestro bridge
 defaults to dry-run and uses synthetic example calibration; neither is the
-unpublished named-gait Pico firmware.
+newly published [named-gait Pico firmware](PICO-CONTROLLER.md).
 
 ## Publication and secret review
 
@@ -203,4 +203,18 @@ Do not force-push an unreviewed history cleanup.
   still determines actual supported limits and token accounting.
 - Passing mocks does not validate physical gait, private backend integrations,
   Android behavior on every phone, service retention, or real-world safety.
-  This public snapshot is not an end-to-end release of the named-walk firmware.
+  Pico source is now included, but private calibration and supported hardware
+  commissioning are still required; source availability is not plug-and-play validation.
+
+## 7.23 / Pico 7.14 review additions
+
+- `music-core.js` parses bounded MIDI; `music-player.js` schedules/cancels audio,
+  composes and persists songs. `music-score.js` embeds the attributed score.
+- `story-core.js` segments text; `story-library.js` holds credited editions;
+  `story-player.js` owns narration, Talk interruptions, scene context and resume.
+  Native `speakTagged` must retain real completion/error callbacks.
+- `PitchTracker.java` analyzes a bounded local microphone window without STT.
+- `sensor-awareness.js` distinguishes stale/missing acquisition, phone motion
+  and low-information sensors from visual evidence or measured robot travel.
+- Read [Pico protocol, recovery and field evidence](PICO-CONTROLLER.md) before
+  changing servo output, holding, gesture decoding or liveness behavior.

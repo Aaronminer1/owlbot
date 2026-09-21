@@ -1,0 +1,35 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const music=require('../app/src/main/assets/music-core.js');
+const root=path.join(__dirname,'../app/src/main/assets/music');
+const bytes=fs.readFileSync(path.join(root,'fur-elise.mid')),score=music.parseMidi(bytes);
+assert.equal(require('node:crypto').createHash('sha256').update(bytes).digest('hex'),'18026e3a8f89b66e3747876af80cd1da5b38d6e42ad0782722a310ca1f349a09','Reviewed score asset must not change silently');
+const script=fs.readFileSync(path.join(root,'../music-score.js'),'utf8');
+assert.deepEqual(Buffer.from(/BASE64='([^']+)'/.exec(script)[1],'base64'),bytes,'Android embedded score must exactly match the reviewed MIDI file');
+assert.equal(score.notes.length,1041,'Complete unfolded score must not lose repeats or middle sections');
+assert(Math.abs(score.duration-156.25)<.01);
+assert.deepEqual(score.notes.slice(0,9).map(n=>n.note),[76,75,76,75,76,71,74,72,69]);
+assert(score.notes.some(n=>n.start>90&&n.note>=90),'The later contrasting passage is present');
+assert.deepEqual(score.notes.slice(-3).map(n=>n.note),[69,45,33],'Final A-minor ending');
+const hum=music.hummingScore(score,1);
+assert.equal(hum.duration,score.duration);assert(hum.notes.length>500);
+const lastMelody=score.notes.filter(n=>n.track===1).at(-1);
+assert(Math.abs(hum.notes.at(-1).start+hum.notes.at(-1).duration-lastMelody.start-lastMelody.duration)<.01);
+assert(score.duration-(lastMelody.start+lastMelody.duration)<.5,'Only the written final rest follows the last melody note');
+assert.deepEqual(hum.notes.slice(0,8).map(n=>n.note),[64,63,64,63,64,59,62,60]);
+for(let i=1;i<hum.notes.length;i++)assert(hum.notes[i].start>=hum.notes[i-1].start+hum.notes[i-1].duration-1e-7,'Hum is monophonic');
+for(const n of [0,4,20,bytes.length-3])assert.throws(()=>music.parseMidi(bytes.subarray(0,n)));
+assert.throws(()=>music.parseMidi(new Uint8Array(2100000)),/2 MB/);
+// Tempo changes + running-status note-off at zero velocity + pedal release.
+function midi(track){return Uint8Array.from([77,84,104,100,0,0,0,6,0,0,0,1,0,96,77,84,114,107,0,0,0,track.length,...track]);}
+const fixture=music.parseMidi(midi([0,0x90,60,100,96,0xff,0x51,3,0x0f,0x42,0x40,96,60,0,0,0xff,47,0]));
+assert.equal(fixture.duration,1.5);assert.equal(fixture.notes[0].duration,1.5);
+const pedal=music.parseMidi(midi([0,0xb0,64,127,0,0x90,60,100,96,0x80,60,0,96,0xb0,64,0,0,0xff,47,0]));
+assert.equal(pedal.notes[0].duration,1);
+const samples=[];
+for(let t=0;t<600;t+=60)samples.push({t,midi:60.1,confidence:.97,rms:.04});
+for(let t=900;t<1200;t+=60)samples.push({t,midi:64.1,confidence:.97,rms:.04});
+const phrase=music.capturedPhrase(samples);
+assert.equal(phrase.notes.length,2);assert.equal(phrase.notes[1].start,.9);
+assert(phrase.notes[0].duration>phrase.notes[1].duration*1.5,'Copy retains rhythm');
+assert.equal(music.capturedPhrase(samples.map(s=>({...s,confidence:.3}))),null);
+console.log('Music core: full 1041-note score, repeats, ending, complete hum, tempo/pedal, rhythm and malformed files passed');

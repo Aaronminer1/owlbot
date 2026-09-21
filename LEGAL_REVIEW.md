@@ -13,7 +13,12 @@ OwlBot is distributed for noncommercial purposes under PolyForm Noncommercial 1.
 - All tracked files and all reachable Git objects were inventoried.
 - The OwlBot source was compared with the public GrowBot source at commit `48c592ac6393341aefbcea363b7614c14426d150`. No unexplained verbatim long-form matches were found by the line-based comparison. OwlBot nevertheless treats its GrowBot-inspired and protocol-compatible work conservatively as subject to GrowBot's noncommercial terms. The exact upstream license from that commit is preserved in `LICENSES/GrowBot-PolyForm-Noncommercial-1.0.0.txt`.
 - The prototype body is the smaller `CAD/dog02_9g.stp` variant from James Bruton's YouCanBuildDog project. No CAD or upstream body source is included here. Its MIT notice is preserved in `LICENSES/YouCanBuildDog-MIT.txt` for attribution.
-- The repository contains no GrowBot firmware, policy weights, CAD, artwork, website assets, or trained checkpoints.
+- Earlier snapshots excluded body firmware. The 7.23 publication now includes
+  the reviewed OwlBot Pico 7.14 adaptation under the existing noncommercial
+  terms; no policy weights, CAD, artwork, website assets or trained checkpoints
+  are added. Current upstream GrowBot software/driver provenance was checked at
+  commit `2d0b904726f664e298582fad3492be2fbf8e8443`. Credits remain in
+  `THIRD_PARTY_NOTICES.md`, the preserved licenses and firmware documentation.
 - The 5.7-community update was merged against the audited 4.1 community tree rather than copied wholesale from the private phone build. The local-model runtime, automatic model downloader, unofficial Microsoft Edge Read Aloud transport, and their implementation files remain excluded. Continuous conversation relies on Android's system speech service and adds no vendored runtime dependency.
 - The 7.12-community export preserves these exclusions and the existing package namespace, dependency list, license and notices. It adds reviewed source modules and synthetic regression tests, not device backups or private audit reports. The new native face-embedding backend and its weights are also excluded; corresponding unavailable capabilities are not advertised as working. This update does not constitute a new legal opinion or review of excluded model terms.
 
@@ -25,6 +30,14 @@ OwlBot is distributed for noncommercial purposes under PolyForm Noncommercial 1.
 - The automatic Gemma model downloader and LiteRT-LM runtime. Model weights have separate terms and must not be redistributed as part of OwlBot without a separate review.
 
 ## Third-party runtime components
+
+The new media assets are documented in `app/src/main/assets/music/README.md`
+and `stories/README.md`: Mutopia's public-domain Für Elise typesetting and
+selected historical texts whose Project Gutenberg pages identify them as public
+domain in the USA, alongside clearly labeled OwlBot retellings. Credits, source
+links, content notes and the Gutenberg license are retained. These assets are
+not claimed as exclusively OwlBot-authored or relicensed to erase source rights.
+Availability elsewhere depends on local copyright rules.
 
 - Google ML Kit face detection is obtained from Google's Maven repository during the build and is governed by the ML Kit and Google API terms. It is not stored in this Git repository.
 - Android Gradle tooling and transitive Android/Kotlin libraries are resolved from their upstream repositories during the build and retain their own terms.

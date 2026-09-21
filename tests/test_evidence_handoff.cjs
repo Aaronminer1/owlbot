@@ -3,6 +3,7 @@ const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-b
 const part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
 const prompts=[];
 const box={Date,JSON,String,Number,Math,cameraGeneration:0,identityEnrollmentActive:()=>false,S:{cameraFacing:'front'},MIND:{visionReportFacing:'front'},LOCAL_VISION:{status:{thermalStatus:0}},
+ sensorAwarenessContext:()=> 'head movement commanded',
  cachedVisionReport:()=> 'An open yellow bucket contains tools.',localVisionRoute:()=> 'local',localVisionReady:()=>true,
  localVisionInfer:async(img,prompt)=>{prompts.push(prompt);return {text:'CHANGE: UNCERTAIN A yellow capped jug is visible. Its contents are hidden. FOCUS: 0,0,jug',backend:'gpu',latencyMs:1500};},
  log:()=>{},inquiryObserve:(report,at,facing)=>{box.observation={report,at,facing};},visualAttentionFromReport:()=>{}};
@@ -22,6 +23,8 @@ vm.runInContext(part('function executiveOutcomeFallback(','function unexecutedMo
  assert.match(prompts[0],/Is the yellow object open or capped/);
  assert.doesNotMatch(prompts[0],/PRIOR REPORT|contains tools/);
  assert.match(prompts[0],/Inspect only this image/);
+ assert.match(prompts[0],/Nonvisual context \(not pixel evidence\): head movement commanded/);
+ assert.match(prompts[0],/Never infer an object, clear path or arrival from these sensors/);
  assert.match(prompts[0],/No coordinates, FOCUS, CHANGE/);
  assert.equal(box.observation.report,box.MIND.visionReport);
  await box.describeFrameForBrain('','','image',null,'ambient heartbeat');

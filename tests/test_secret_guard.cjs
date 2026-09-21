@@ -14,7 +14,14 @@ try{
  r=scan();assert.notEqual(r.status,0);assert.match(r.stdout,/Git index/);assert(!r.stdout.includes(marker)&&!r.stderr.includes(marker));
  git('add','sample.txt');fs.mkdirSync(path.join(fixture,'backups'));fs.writeFileSync(path.join(fixture,'backups','state.json'),'{}');git('add','backups/state.json');
  r=scan();assert.notEqual(r.status,0);assert.match(r.stdout,/Forbidden tracked path/);
- console.log('PASS: clean tree accepted; working, staged-only and forbidden-path leaks blocked without printing values.');
+ git('rm','--cached','backups/state.json');
+ fs.mkdirSync(path.join(fixture,'firmware/pico'),{recursive:true});
+ for(const name of ['servo_channels.json','named_walk.json','dog_cal.json','dog_gait.json','gaze_cal.json','stock_commands.json','control_token.txt']){
+  const file='firmware/pico/'+name;fs.writeFileSync(path.join(fixture,file),'{}');git('add',file);
+  r=scan();assert.notEqual(r.status,0);assert.match(r.stdout,/Forbidden tracked path/);
+  git('rm','--cached',file);
+ }
+ console.log('PASS: clean tree accepted; working/staged secrets, private artifacts and Pico configuration blocked without printing values.');
 }finally{
  // Delete only the exact generated fixture, never an unresolved broad root.
  const resolved=fs.realpathSync(fixture),parent=fs.realpathSync(os.tmpdir());

@@ -13,7 +13,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the Git index.' }
 $forbidden = $tracked | Where-Object {
     $_ -match '(^|/)(backups|audits|captures|screenshots|models|face_models)/' -or
     $_ -match '(^|/)(\.env(?:\..+)?|\.audit-key|local\.properties|secrets\.py)$' -and $_ -notmatch '\.example$' -or
-    $_ -match '\.(apk|aab|jks|keystore|p12|pfx|pem|key|token|litertlm|onnx|tflite|db|sqlite\d*|jsonl|tar|zip|dump|dmp)$'
+    $_ -match '\.(apk|aab|jks|keystore|p12|pfx|pem|key|token|litertlm|onnx|tflite|db|sqlite\d*|jsonl|tar|zip|dump|dmp)$' -or
+    $_ -match '^firmware/pico/(servo_channels|named_walk|dog_cal|dog_gait|gaze_cal|stock_commands)\.json$' -or
+    $_ -eq 'firmware/pico/control_token.txt'
 }
 if ($forbidden) { $forbidden | ForEach-Object { Write-Host "Forbidden tracked path: $_" }; throw 'Private/runtime artifacts must not be tracked.' }
 $excludedDirectories = @('.git', '.gradle', 'build', '.idea', '.cxx', 'models')
