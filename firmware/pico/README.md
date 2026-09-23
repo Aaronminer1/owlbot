@@ -3,6 +3,8 @@
 Start with [the controller review guide](../../docs/PICO-CONTROLLER.md).
 This is OwlBot's adaptation of the GrowBot protocol/driver for a calibrated
 slide-driven body, not official GrowBot firmware or a universal servo map.
+For the owner's working GrowBot app integration, see the
+[walk, turn and head-control note](../../docs/GROWBOT-INTEGRATION.md).
 It uses the repository's PolyForm Noncommercial license and retained upstream
 notices. No model weights, MicroPython binaries or device configuration are bundled.
 
