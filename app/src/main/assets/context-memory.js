@@ -41,6 +41,7 @@ async function archiveConversations(records){
 }
 function memoryRecords(){
   const records=[];
+  if(typeof completedInquiryRecords==='function')records.push(...completedInquiryRecords());
   for(const x of MEM.answeredQuestions||[])records.push({kind:'human_answer',t:x.t,text:'Question/context: '+x.context+' | Person reported: '+x.answer+' | Source: '+x.source+'. Not independent visual verification.'});
   for(const p of Object.values(MEM.people||{})){
     if(p?.name)records.push({kind:'person_record',t:p.seen||p.met||0,

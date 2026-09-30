@@ -1,5 +1,6 @@
 # Android and Gradle build output
 .gradle/
+node_modules/
 **/build/
 captures/
 .externalNativeBuild/

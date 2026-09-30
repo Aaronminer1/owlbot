@@ -2,7 +2,7 @@
  * Full scores use a small audio look-ahead, with a generation token across every
  * await so Stop/sleep/typing cannot be undone by a late asset load or resume. */
 const MIDI_PLAYER={ctx:null,master:null,active:new Set(),timer:null,playing:false,
-  loading:false,title:'',resumeMic:false,generation:0,position:0,duration:0,scheduled:0};
+  loading:false,title:'',resumeMic:false,generation:0,position:0,duration:0,scheduled:0,face:null};
 const MUSIC={prefs:{favorite:'',idle:false,improviseIdle:true,volume:.55},cache:null,
   startedAt:Date.now(),lastIdleAt:0,idleForHuman:null,notice:'Ready',capture:0,
   captureTimer:null,samples:[],lastEchoAt:0,lastToneAt:0};
@@ -50,12 +50,37 @@ function musicPreferences(update){
 }
 function musicBlocked(preview=false){return typeof APP==='undefined'||(APP.resting&&!(preview&&APP.settings))||THERMAL.paused||document.hidden;}
 function musicOwnsResources(){return MIDI_PLAYER.playing||MIDI_PLAYER.loading||!!MUSIC.capture;}
+function musicFaceState(){
+  // A readout of the audio clock, not an independent dancing timer. Queued
+  // notes, muted output, loading and suspended audio must not mime a performance.
+  const f=MIDI_PLAYER.face,ctx=MIDI_PLAYER.ctx;
+  if(!MIDI_PLAYER.playing||!f||ctx?.state!=='running'||MUSIC.prefs.volume<=0)return null;
+  const time=ctx.currentTime-f.origin;
+  if(time<0||time>MIDI_PLAYER.duration+.15)return null;
+  while(f.next<f.notes.length&&f.notes[f.next].start<=time){
+    const note=f.notes[f.next++];
+    if(time-note.start<note.duration+.15)f.active.push(note);
+  }
+  f.active=f.active.filter(n=>time<n.start+n.duration+.15).slice(-32);
+  let energy=0;
+  for(const n of f.active){
+    const age=time-n.start,attack=Math.min(1,age/.06),release=Math.max(0,Math.min(1,(n.start+n.duration+.15-time)/.15));
+    energy=Math.max(energy,(n.velocity||.6)*attack*release*(f.instrument==='piano'?Math.exp(-age/.45):1));
+  }
+  energy=Math.max(0,Math.min(1,energy));
+  while(f.tempoIndex+1<f.tempos.length&&f.tempos[f.tempoIndex+1].time<=time)f.tempoIndex++;
+  const tempo=f.tempos[f.tempoIndex];
+  const phase=(tempo.beat+(time-tempo.time)*tempo.bpm/60)*Math.PI*2;
+  return {emotion:f.instrument==='hum'?'humming':f.gentle?'serene':'musical',
+    reason:(f.instrument==='hum'?'humming the melody of ':'playing '+f.instrument+' for ')+MIDI_PLAYER.title,
+    energy,sway:Math.sin(phase/2)*energy,nod:(1-Math.cos(phase))*.5*energy};
+}
 function musicRestoreMic(){
   if(!MIDI_PLAYER.resumeMic)return;
   MIDI_PLAYER.resumeMic=false;
   // Restore current owner intent, not the input mode that happened to be set
   // before the performance. Never reopen ears after Sleep or a quiet command.
-  if(!APP.resting&&!THERMAL.paused&&!EARS.paused&&!VOICE.holdMic&&EARS.handsFree)
+  if(!APP.resting&&!APP.settings&&!THERMAL.paused&&!EARS.paused&&!VOICE.holdMic&&EARS.handsFreeWanted)
     try{NATIVE?.setMicPaused(false);}catch(e){}
 }
 function musicCancelCapture(){
@@ -69,7 +94,7 @@ function musicStop(reason='Stopped'){
     state:reason==='Finished the complete performance'?'completed':'interrupted',reason,
     title:MIDI_PLAYER.title,scheduled:MIDI_PLAYER.scheduled,duration:MIDI_PLAYER.duration,jobId:MIDI_PLAYER.jobId};
   MIDI_PLAYER.generation++;clearTimeout(MIDI_PLAYER.timer);MIDI_PLAYER.timer=null;
-  MIDI_PLAYER.playing=false;MIDI_PLAYER.loading=false;MIDI_PLAYER.title='';
+  MIDI_PLAYER.playing=false;MIDI_PLAYER.loading=false;MIDI_PLAYER.title='';MIDI_PLAYER.face=null;
   for(const node of MIDI_PLAYER.active){try{node.stop();node.disconnect();}catch(e){}}
   MIDI_PLAYER.active.clear();musicCancelCapture();musicRestoreMic();
   if(MIDI_PLAYER.keptAwake){MIDI_PLAYER.keptAwake=false;if(APP.resting)try{NATIVE?.keepAwake(false);}catch(e){}}
@@ -218,7 +243,7 @@ function musicGeneratedScore(args){
   }
   if(!notes.length)throw Error('Empty MIDI score');
   notes.sort((a,b)=>a.start-b.start);
-  return {notes,duration:Math.max(...notes.map(n=>n.start+n.duration))};
+  return {notes,tempos:[{time:0,beat:0,bpm:tempo}],duration:Math.max(...notes.map(n=>n.start+n.duration))};
 }
 function musicWave(ctx,instrument){
   // A nasal, softly voiced harmonic spectrum for humming, distinct from TTS.
@@ -277,6 +302,11 @@ async function musicPlay(args={}){
     MIDI_PLAYER.compositionId=musicRememberComposition(args);
     MIDI_PLAYER.duration=score.duration;MIDI_PLAYER.position=0;MIDI_PLAYER.scheduled=0;
     const origin=ctx.currentTime+.12,wave=musicWave(ctx,instrument);let next=0;
+    const tempos=score.tempos?.length?score.tempos:[{time:0,beat:0,bpm:Number(args.tempo)||100}];
+    const tempo=tempos.filter(t=>t.time===0).at(-1).bpm;
+    const meanVelocity=score.notes.reduce((sum,n)=>sum+(n.velocity||.6),0)/score.notes.length;
+    MIDI_PLAYER.face={origin,instrument,tempos,tempoIndex:0,notes:score.notes,next:0,active:[],
+      gentle:tempo<=85&&meanVelocity<=.6};
     function pump(){
       if(generation!==MIDI_PLAYER.generation)return;
       if(musicBlocked(preview)){musicStop('Music paused');return;}
@@ -289,7 +319,7 @@ async function musicPlay(args={}){
       MUSIC.notice=(instrument==='hum'?'Humming: ':'Playing: ')+MIDI_PLAYER.title;musicRender();
       MIDI_PLAYER.timer=setTimeout(pump,100);
     }
-    pump();FACE.set('playful',12000,{source:'state',reason:'enjoying a tune',confidence:.95});
+    pump(); // The live audio state owns the face; Stop leaves no forced smile.
     return `Playing ${MIDI_PLAYER.title}: ${score.notes.length} notes, ${Math.round(score.duration)} seconds, ${instrument}. Playback started; completion is not yet confirmed.`+
       (MIDI_PLAYER.compositionId?' Saved composition ID: '+MIDI_PLAYER.compositionId:'');
   }catch(e){if(generation===MIDI_PLAYER.generation)musicStop('Music error: '+e.message);throw e;}

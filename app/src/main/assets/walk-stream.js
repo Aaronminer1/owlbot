@@ -10,7 +10,7 @@
 const WALK_STREAM={session:null,sequence:0};
 function walkingStreamStatus(s=WALK_STREAM.session){
   return s?{id:s.id,active:s.active,target:s.target,direction:s.direction,startedAt:s.startedAt,
-    completedCycles:s.completedCycles||0,outcome:s.outcome||'starting',phase:s.phase||'starting',corrections:s.corrections||0,correctionFraction:s.correctionFraction||0,corridor:s.corridor||'',failureKind:s.failureKind||null,recoveryAttempts:s.recoveryAttempts||0,goalRetained:Boolean(s.target||s.corridor||s.direction),physicalArrivalVerified:false}:
+    completedCycles:s.completedCycles||0,outcome:s.outcome||'starting',phase:s.phase||'starting',corrections:s.corrections||0,correctionFraction:s.correctionFraction||0,corridor:s.corridor||'',failureKind:s.failureKind||null,recoveryAttempts:s.recoveryAttempts||0,goalRetained:Boolean(s.target||s.corridor||s.direction),...(s.requestedStopReason?{requestedStopReason:s.requestedStopReason,stopReasonIsObservation:false}:{}),physicalArrivalVerified:false}:
     {active:false,physicalArrivalVerified:false};
 }
 function walkNavigationFailure(error){
@@ -60,6 +60,7 @@ function walkingStreamSpeech(status){
   }
   if(/Pico|controller|connection|socket|disconnected|offline|not responding/i.test(reason))return prefix+'I lost contact with the leg controller.';
   if(/owner.*stop|person.*stop|course correction requested/i.test(reason))return 'Stopped as requested.';
+  if(/^Stopped for inspection; arrival is unverified\./.test(reason))return 'Stopped to take a look.';
   if(/rest|motor authority|paused in Controls/i.test(reason))return prefix+'Movement is paused.';
   if(/reassessment interval/i.test(reason))return 'Walking paused for a route reassessment.';
   if(/repeated steering/i.test(reason))return 'Walking stopped because the course corrections were not making progress.';
@@ -93,7 +94,7 @@ function startWalkingStream(args={}){
     while(s.active){
       guard();s.phase='walking';
       try{
-        s.outcome=await runNamedForwardWalk({continuous:!detourStep,...(detourStep?{cycles:1}:{}),direction,pace:args.pace,target,corridor,courseCorrection:courseCorrection&&!detourStep,recoveryTilt:s.failureKind==='uncertain',
+        s.outcome=await runNamedForwardWalk({continuous:!detourStep,...(detourStep?{cycles:1}:{}),direction,pace:args.pace,target,corridor,courseCorrection:courseCorrection&&!detourStep,
           sessionGuard:guard,onProgress:state=>{s.completedCycles=completed+(state.completed_cycles||0);if(state.completed_cycles>0){s.failureKind=null;recoveryStreak=0;visionFailures=0;}s.outcome='walking';}});
         if(detourStep){completed=s.completedCycles;detourStep=false;continue;}
         break;
@@ -108,6 +109,8 @@ function startWalkingStream(args={}){
           if(!notified.has(failure.kind)&&typeof args.onRecovery==='function'){
             notified.add(failure.kind);try{args.onRecovery(walkingStreamStatus(s));}catch(e){}
           }
+          // Protocol/service failures are not obstacles. Stop retrying a broken
+          // service after a small budget, retaining the destination in status.
           // Protocol/service failures are not obstacles. Stop retrying a broken
           // service after a small budget, retaining the destination in status.
           // Four failed service runs total (initial run + three retries).
@@ -179,6 +182,12 @@ async function stopWalkingStream(reason='Stopped for course correction.'){
   const s=WALK_STREAM.session;
   if(!s?.active)return walkingStreamStatus();
   const correcting=s.phase==='correcting';
+  // A model-written reason is intent, not measured position. Preserve it as
+  // such for diagnostics without laundering "reached" into a controller fact.
+  if(/\b(?:reached|arrived|arrival|destination complete)\b/i.test(String(reason))){
+    s.requestedStopReason=String(reason).slice(0,180);
+    reason='Stopped for inspection; arrival is unverified.';
+  }
   cancelWalkingSession(reason);
   let stopError=null;
   try{await channelCommand('walk_halt');}catch(e){stopError=e;}

@@ -27,7 +27,8 @@ async function scenario(cycles,{saved=3,blocked=0,stopAt=0,direction='forward',b
     assert.equal(r.checks,cycles,'exactly one fresh approval per actual cycle');
     assert.equal(r.calls.filter(c=>c.action==='walk_run').length,Math.ceil(cycles/saved));
     assert.equal(r.calls.filter(c=>c.action==='walk_halt').length,cycles%saved?1:0);
-    assert.match(r.result,new RegExp('finished '+cycles+' '+direction));
+    assert.match(r.result,new RegExp('controller reports '+cycles+' completed '+direction));
+    assert.match(r.result,/physical travel and posture are not measured/);
   }
   for(const cycles of [0,31,-1,1.5,'2',NaN]){const r=await scenario(cycles);assert.match(r.error,/1 to 30/);assert.equal(r.calls.length,0);}
   let r=await scenario(7,{blocked:4});assert.match(r.error,/cannot proceed/);assert.equal(r.total,3);assert.equal(r.calls.filter(c=>c.action==='walk_run').length,1);

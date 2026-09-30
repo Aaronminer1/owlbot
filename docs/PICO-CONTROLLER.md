@@ -1,5 +1,10 @@
 # Pico 7.14: review and field evidence
 
+**Historical baseline:** this page records the 7.14 publication tests, not the
+current head-speed cap. Current source is **7.16-sonar1** with a paced 400
+microseconds/second head cap. See [current commissioning notes](../firmware/pico/README.md)
+and [7.54 update](UPDATE-7.54.md) for the newer modules and validation boundaries.
+
 This source release newly includes [the Pico firmware](../firmware/pico/README.md).
 Earlier release notes saying firmware was excluded describe those earlier trees.
 Android **7.23-community** and Pico **7.14** are separate version sequences.

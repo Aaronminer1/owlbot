@@ -43,6 +43,46 @@ class StockBodyTests(unittest.TestCase):
         for port,pulse in self.board.writes:
             c=self.channels.channels[port-1]
             self.assertEqual(pulse,c['b_us'])
+    def test_startup_handoff_retains_positions_without_releasing_outputs(self):
+        self.tick(90,90,65)
+        before=dict(self.channels.current)
+        releases=list(self.board.releases)
+        self.stock._start_steps()
+        self.assertEqual(self.channels.current,before)
+        self.assertEqual(self.board.releases,releases)
+        self.assertTrue(self.channels.owning)
+        # Inspect the first channel move only. This direct unit invocation has
+        # no alternating input lease; the integration tests exercise that lease.
+        for _ in range(2):
+            self.f.now+=20;self.channels.step()
+        self.assertEqual(self.channels.current,before,'Down must not re-seed from Center')
+    def test_faster_growbot_walk_does_not_change_saved_plan_or_other_lanes(self):
+        before=dict(self.f.gait.plan)
+        self.tick(90,90,65);self.stock._start_steps()
+        self.assertEqual(self.stock.speed,2000)
+        self.assertEqual(self.channels.speed,2000)
+        self.assertEqual(self.stock.status()['stock_walk']['speed_us_s'],2000)
+        self.assertEqual(self.f.gait.plan,before)
+        self.stock.stop()
+        self.channels.move([dict(channel=1,position='Down')],speed=9999)
+        self.assertEqual(self.channels.speed,1600)
+        self.channels.move([dict(channel=7,position='Closed')],speed=9999)
+        self.assertEqual(self.channels.speed,1600)
+        with self.assertRaisesRegex(ValueError,'stock_walk_speed_requires_legs_or_slide'):
+            self.channels.move([dict(channel=7,position='Closed')],speed=2000,stock_walk=True)
+        self.channels.channels[1]['group']='head'
+        self.channels.move([dict(channel=1,position='Down')],speed=9999)
+        self.assertEqual(self.channels.speed,150)
+        with self.assertRaisesRegex(ValueError,'stock_walk_speed_requires_legs_or_slide'):
+            self.channels.move([dict(channel=1,position='Down')],speed=2000,stock_walk=True)
+    def test_faster_rate_completes_more_cycles_for_same_input_time(self):
+        self.stock.WALK_SPEED_PERCENT=100
+        self.oscillate(1000)
+        baseline=self.stock.completed_cycles
+        self.stock.stop()
+        self.stock.WALK_SPEED_PERCENT=125
+        self.oscillate(1000)
+        self.assertGreater(self.stock.completed_cycles,baseline)
     def test_stream_lift_is_down_based_but_gestures_keep_their_mapping(self):
         self.tick(135,45)
         for row in self.stock.mapping():

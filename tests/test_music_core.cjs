@@ -23,6 +23,7 @@ assert.throws(()=>music.parseMidi(new Uint8Array(2100000)),/2 MB/);
 function midi(track){return Uint8Array.from([77,84,104,100,0,0,0,6,0,0,0,1,0,96,77,84,114,107,0,0,0,track.length,...track]);}
 const fixture=music.parseMidi(midi([0,0x90,60,100,96,0xff,0x51,3,0x0f,0x42,0x40,96,60,0,0,0xff,47,0]));
 assert.equal(fixture.duration,1.5);assert.equal(fixture.notes[0].duration,1.5);
+assert.deepEqual(fixture.tempos,[{time:0,beat:0,bpm:120},{time:.5,beat:1,bpm:60}]);
 const pedal=music.parseMidi(midi([0,0xb0,64,127,0,0x90,60,100,96,0x80,60,0,96,0xb0,64,0,0,0xff,47,0]));
 assert.equal(pedal.notes[0].duration,1);
 const samples=[];

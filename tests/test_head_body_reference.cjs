@@ -1,0 +1,32 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const root=path.join(__dirname,'../app/src/main/assets');
+const head=fs.readFileSync(path.join(root,'head-controller.js'),'utf8'),html=fs.readFileSync(path.join(root,'growbot-brain.html'),'utf8'),walk=fs.readFileSync(path.join(root,'named-walk.js'),'utf8');
+let pan=0,tilt=-.6,forward='front';
+const b={Date,S:{cameraFacing:'front'},HEAD:{stateAt:Date.now(),generation:1,viewGeneration:0,explicitMoves:0,state:{holding:true,moving:false}},headReady:()=>true,headSemanticPosition:axis=>axis==='pan'?pan:tilt,$:()=>({value:forward})};
+vm.createContext(b);vm.runInContext(head.slice(head.indexOf('function headCameraView('),head.indexOf('function headObserveBodyCommand(')),b);
+assert.equal(b.headCameraView().bodySector,'forward');
+const centered=b.headCameraView();pan=.7;assert.equal(b.headCameraView().bodySector,'right');assert.equal(b.headCameraView('back').bodySector,'behind-left');
+assert.equal(b.headCameraViewMatches(centered,b.headCameraView()),false,'face-follow motion without a generation bump still invalidates the view');
+pan=-.7;assert.equal(b.headCameraView().bodySector,'left');assert.equal(b.headCameraView('back').bodySector,'behind-right');
+pan=0;assert.equal(b.headCameraView('back').bodySector,'behind');
+forward='back';assert.equal(b.headCameraView('back').bodySector,'forward');forward='front';
+b.HEAD.state.holding=false;assert.equal(b.headCameraView().bodySector,'unknown');b.HEAD.state.holding=true;
+b.HEAD.stateAt=Date.now()-4000;assert.equal(b.headCameraView().bodySector,'unknown');b.HEAD.stateAt=Date.now();
+const before=b.headCameraView();b.HEAD.viewGeneration++;assert(!b.headCameraViewMatches(before,b.headCameraView()),'raw calibration move invalidates even unchanged old pulses');
+b.HEAD.viewGeneration=0;
+b.MIND={visionReport:'A wall',visionReportFacing:'front',visionReportAt:Date.now(),visionView:b.headCameraView()};
+vm.runInContext(html.slice(html.indexOf('function cachedVisionReport('),html.indexOf('function visualAttentionFromReport(')),b);
+assert.equal(b.cachedVisionReport(),'A wall');pan=.7;assert.equal(b.cachedVisionReport(),'');
+b.walkNavigationError=(kind,message)=>Object.assign(Error(message),{navigationKind:kind});
+vm.runInContext(walk.slice(walk.indexOf('function assertWalkingHeadView('),walk.indexOf('async function checkNamedWalkPathAligned(')),b);
+assert.throws(()=>b.assertWalkingHeadView({headView:centered,cameraFacing:'front'}),/corridor/);
+(async()=>{
+ await assert.rejects(b.readWalkingHeadView('front'),/sideways/);
+ pan=0;const valid=await b.readWalkingHeadView('front');b.assertWalkingHeadView({headView:valid,cameraFacing:'front'});
+ // Inference completing after a small untracked/manual look cannot grant motion.
+ b.HEAD.viewGeneration++;await assert.rejects(b.readWalkingHeadView('front',valid),/sideways/);
+ assert.match(walk,/assertWalkingHeadView\(initialView\)/);
+ assert.match(walk,/assertWalkingHeadView\(continueView\)/);
+ assert.match(walk,/grant:async[\s\S]*?assertWalkingHeadView\(view\)/);
+ console.log('PASS body-relative front/rear view sectors, stale/released pose, head-only drift, raw-move generations, cache invalidation and movement approval rechecks; synthetic only.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

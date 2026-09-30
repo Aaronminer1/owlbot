@@ -133,6 +133,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private boolean ttsReady = false;
     private volatile String activeTaggedSpeech = "";
     private SpeechRecognizer recognizer;
+    private boolean pushToTalkHeld;
     private boolean micPaused = true;     // wait for restored WebView hearing intent
     private boolean listening = false;    // a recognition session is live
     private long lastRms = 0;
@@ -147,8 +148,11 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private volatile AudioRecord handsFreeRecorder;
     private SpeechRecognizer handsFreeSpeechRecognizer;
     private volatile boolean handsFreeTranscribing = false;
+    private volatile boolean handsFreeUtteranceActive = false;
+    private boolean handsFreeJobActive = false; // main-thread recognition reservation, including retries
+    private final SpeechCaptureQueue handsFreeClips = new SpeechCaptureQueue();
     private ParcelFileDescriptor handsFreeAudioRead;
-    private long handsFreeTranscriptionGeneration = 0;
+    private volatile long handsFreeTranscriptionGeneration = 0;
     private String handsFreePartial = "";
     private Runnable handsFreeTranscriptionTimeout;
     private Thread handsFreeThread;
@@ -1456,6 +1460,8 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         @JavascriptInterface
         public void beginPushToTalk() {
             main.post(() -> {
+                pushToTalkHeld = true;
+                stopHandsFreeCapture();
                 micPaused = false;
                 startListening();
             });
@@ -1465,8 +1471,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         @JavascriptInterface
         public void endPushToTalk() {
             main.post(() -> {
+                pushToTalkHeld = false;
                 pendingSpeechListen = false;
                 finishListening();
+                resumeHandsFreeAfterTalk();
             });
         }
 
@@ -1477,6 +1485,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 final boolean wasPaused = micPaused;
                 micPaused = paused;
                 if (paused) {
+                    pushToTalkHeld = false;
                     pendingSpeechListen = false;
                     stopListening();
                     stopHandsFreeCapture();
@@ -1541,6 +1550,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         @JavascriptInterface
         public boolean micPaused() {
             return micPaused;
+        }
+        @JavascriptInterface
+        public String offlineSpeechStatus() {
+            return "{\"ready\":false,\"included\":false}";
         }
 
         /** Request optional location/step permissions and start every safe sensor. */
@@ -1829,6 +1842,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                         toJs("onNativeSpeech", hits.get(0));
                     }
                     toJs("onNativeMicState", "idle");
+                    resumeHandsFreeAfterTalk();
                 }
                 @Override public void onError(int err) {
                     listening = false;
@@ -1838,6 +1852,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                             || err == SpeechRecognizer.ERROR_SPEECH_TIMEOUT);
                     if (!routine) toJs("onNativeSpeechError", "error " + err);
                     toJs("onNativeMicState", "idle");
+                    resumeHandsFreeAfterTalk();
                 }
                 @Override public void onReadyForSpeech(Bundle b) {
                     toJs("onNativeMicState", "ready");
@@ -1931,10 +1946,24 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         return true;
     }
 
+    private void resumeHandsFreeAfterTalk() {
+        main.postDelayed(() -> {
+            if(activityResumed && handsFreeEnabled && !micPaused && !pushToTalkHeld && !listening)
+                startHandsFreeCapture();
+        },700);
+    }
+
     private void startHandsFreeCapture() {
         if (!activityResumed) return;
+        if (pushToTalkHeld || listening) return;
         if ((!melodyListenOnly && (!handsFreeEnabled || micPaused)) || handsFreeRunning) return;
         final String key = loadSecretValue("voice_api");
+        if(!melodyListenOnly && Build.VERSION.SDK_INT < 33 && (key==null || key.trim().isEmpty())) {
+            toJs("onNativeHandsFreeState","legacy-needs-key");
+            toJs("onNativeSpeechError","This community build needs Android 13+ or your optional speech provider for hands-free mode. Talk still uses Android speech recognition.");
+            return;
+        }
+        toJs("onNativeHearingBackend",Build.VERSION.SDK_INT>=33?"android-pcm":"cloud-pcm");
         final int rate = 16000;
         final int min = AudioRecord.getMinBufferSize(rate,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
@@ -1973,6 +2002,9 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         handsFreeCaptureGeneration++;
         handsFreeRunning = false;
         handsFreeTranscribing = false;
+        handsFreeUtteranceActive = false;
+        handsFreeJobActive = false;
+        handsFreeClips.clear();
         handsFreeTranscriptionGeneration++;
         if (handsFreeTranscriptionTimeout != null) {
             main.removeCallbacks(handsFreeTranscriptionTimeout);
@@ -2025,10 +2057,11 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 // never constructs an utterance or starts a speech recognizer.
                 if (melodyListenOnly) continue;
                 boolean allowed = System.currentTimeMillis() >= handsFreeResumeAt;
-                if (allowed && !handsFreeTranscribing) gate.observeAmbient(rms);
-                boolean voice = allowed && !handsFreeTranscribing
-                        && gate.isVoice(rms, utterance != null);
-                if (allowed && !handsFreeTranscribing && utterance == null && !voice) gate.observeNoise(rms);
+                // Recognition consumes buffered PCM, not the live microphone.
+                // Continue capturing follow-up speech while it works.
+                if (allowed) gate.observeAmbient(rms);
+                boolean voice = allowed && gate.isVoice(rms, utterance != null);
+                if (allowed && utterance == null && !voice) gate.observeNoise(rms);
                 toJs("onNativeMicLevel", String.valueOf(Math.min(1.0, rms * 9.0)));
 
                 short[] copy = new short[n];
@@ -2043,6 +2076,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                         pre.clear();
                         utteranceFrames = voiced;
                         silence = 0;
+                        handsFreeUtteranceActive = true;
                         toJs("onNativeHandsFreeState", "hearing");
                     }
                 } else {
@@ -2054,8 +2088,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                         Log.i(TAG, "hands-free utterance ended: durationMs=" + (pcm.length * 500L / rate)
                                 + ", reason=" + (silence >= 50 ? "silence" : "length-cap"));
                         utterance = null; voiced = 0; silence = 0; utteranceFrames = 0;
-                        if (pcm.length >= rate * 2 / 3) transcribeHandsFreePcm(pcm, rate, key);
-                        else toJs("onNativeHandsFreeState", "listening");
+                        handsFreeUtteranceActive = false;
+                        if (pcm.length >= rate * 2 / 3 && captureGeneration == handsFreeCaptureGeneration)
+                            queueHandsFreePcm(pcm, rate, key, captureGeneration);
+                        else main.post(this::publishHandsFreeWorkState);
                     }
                 }
             }
@@ -2089,6 +2125,38 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private static void writeLe16(DataOutputStream out, int v) throws Exception { out.writeByte(v); out.writeByte(v >>> 8); }
     private static void writeLe32(DataOutputStream out, int v) throws Exception { out.writeByte(v); out.writeByte(v >>> 8); out.writeByte(v >>> 16); out.writeByte(v >>> 24); }
 
+    private void publishHandsFreeWorkState() {
+        toJs("onNativeHandsFreeState", !handsFreeRunning || micPaused ? "off"
+                : handsFreeUtteranceActive ? "hearing" : handsFreeJobActive ? "transcribing" : "listening");
+    }
+
+    private void queueHandsFreePcm(byte[] pcm, int rate, String key, long capture) {
+        main.post(() -> {
+            if (capture != handsFreeCaptureGeneration || !handsFreeRunning || micPaused || !activityResumed) return;
+            if (!handsFreeClips.offer(new SpeechCaptureQueue.Clip(pcm, rate, key, capture))) {
+                Log.w(TAG, "speech capture queue full; latest clip not accepted");
+                toJs("onNativeSpeechError", "Speech is arriving faster than recognition; please pause briefly and repeat the last phrase");
+            }
+            drainHandsFreeClips();
+        });
+    }
+
+    private void drainHandsFreeClips() {
+        if (!handsFreeJobActive && handsFreeRunning && !micPaused && activityResumed) {
+            SpeechCaptureQueue.Clip clip = handsFreeClips.poll(handsFreeCaptureGeneration);
+            if (clip != null) {
+                handsFreeJobActive = true;
+                transcribeHandsFreePcm(clip.pcm, clip.rate, clip.key);
+            }
+        }
+        publishHandsFreeWorkState();
+    }
+
+    private void completeHandsFreeJob() {
+        handsFreeJobActive = false;
+        drainHandsFreeClips();
+    }
+
     /** Android 13+ can transcribe an already-opened PCM audio source. This lets
      *  OwlBot keep its quiet local VAD while reusing the same system recognizer
      *  as push-to-talk: no Whisper account, no extra microphone session, and
@@ -2100,9 +2168,10 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         }
         if (fallbackKey != null && !fallbackKey.trim().isEmpty()) {
             try { transcribeHandsFree(wavFromPcm(pcm, rate), fallbackKey); }
-            catch (Exception e) { toJs("onNativeSpeechError", "audio preparation failed"); }
+            catch (Exception e) { toJs("onNativeSpeechError", "audio preparation failed"); completeHandsFreeJob(); }
         } else {
             toJs("onNativeHandsFreeState", "legacy-needs-key");
+            completeHandsFreeJob();
         }
     }
 
@@ -2142,7 +2211,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
             toJs("onNativeSpeechError", "system transcription error " + error);
         }
-        toJs("onNativeHandsFreeState", handsFreeEnabled && !micPaused ? "listening" : "off");
+        completeHandsFreeJob();
     }
 
     private void transcribeWithSystemRecognizer(final byte[] pcm, final int rate,
@@ -2168,8 +2237,11 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         SpeechRecognizer failed = handsFreeSpeechRecognizer;
         handsFreeSpeechRecognizer = null;
         if (failed != null) try { failed.destroy(); } catch (Exception ignored) {}
-        main.postDelayed(() -> transcribeWithSystemRecognizer(
-                pcm, rate, fallbackKey, attempt + 1), 300L);
+        final long capture = handsFreeCaptureGeneration;
+        main.postDelayed(() -> {
+            if (capture == handsFreeCaptureGeneration && handsFreeRunning && !micPaused)
+                transcribeWithSystemRecognizer(pcm, rate, fallbackKey, attempt + 1);
+        }, 300L);
     }
 
     private static boolean isTransientRecognizerError(int error) {
@@ -2181,13 +2253,14 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
 
     private void transcribeWithSystemRecognizer(final byte[] pcm, final int rate,
                                                   final String fallbackKey, final int attempt) {
+        final long capture = handsFreeCaptureGeneration;
         main.post(() -> {
-            if (!handsFreeEnabled || micPaused || handsFreeTranscribing) return;
+            if (capture != handsFreeCaptureGeneration || !handsFreeRunning || !handsFreeEnabled || micPaused || handsFreeTranscribing) return;
             if (!SpeechRecognizer.isRecognitionAvailable(this)) {
                 if (fallbackKey != null && !fallbackKey.trim().isEmpty()) {
                     try { transcribeHandsFree(wavFromPcm(pcm, rate), fallbackKey); }
-                    catch (Exception ignored) {}
-                } else toJs("onNativeHandsFreeState", "unavailable");
+                    catch (Exception ignored) { completeHandsFreeJob(); }
+                } else { toJs("onNativeSpeechError", "System speech recognition is unavailable"); completeHandsFreeJob(); }
                 return;
             }
             try {
@@ -2222,11 +2295,13 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                     @Override public void onBufferReceived(byte[] b) {}
                     @Override public void onEndOfSpeech() {}
                     @Override public void onPartialResults(Bundle b) {
+                        if (generation != handsFreeTranscriptionGeneration || !handsFreeTranscribing) return;
                         ArrayList<String> hits=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                         if (hits!=null&&!hits.isEmpty()&&!hits.get(0).trim().isEmpty())
                             handsFreePartial=hits.get(0).trim();
                     }
                     @Override public void onSegmentResults(Bundle b) {
+                        if (generation != handsFreeTranscriptionGeneration || !handsFreeTranscribing) return;
                         ArrayList<String> hits=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                         if (hits!=null&&!hits.isEmpty()&&!hits.get(0).trim().isEmpty()) {
                             String segment=hits.get(0).trim();
@@ -2278,13 +2353,16 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 Log.w(TAG,"system hands-free transcription failed",e);
                 if (fallbackKey != null && !fallbackKey.trim().isEmpty()) {
                     try { transcribeHandsFree(wavFromPcm(pcm,rate),fallbackKey); }
-                    catch (Exception ignored) {}
-                } else toJs("onNativeHandsFreeState","unavailable");
+                    catch (Exception ignored) { completeHandsFreeJob(); }
+                } else { toJs("onNativeSpeechError","System speech recognition failed"); completeHandsFreeJob(); }
             }
         });
     }
 
     private void transcribeHandsFree(final byte[] wav, final String key) {
+        handsFreeTranscribing = true;
+        final long generation = ++handsFreeTranscriptionGeneration;
+        final long capture = handsFreeCaptureGeneration;
         toJs("onNativeHandsFreeState", "transcribing");
         new Thread(() -> {
             HttpURLConnection c = null;
@@ -2305,13 +2383,22 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
                 while ((line = br.readLine()) != null) body.append(line);
                 if (status < 200 || status >= 300) throw new Exception("speech service " + status);
                 String text = new JSONObject(body.toString()).optString("text", "").trim();
-                if (!text.isEmpty()) toJs("onNativeSpeech", text);
-                toJs("onNativeHandsFreeState", handsFreeEnabled && !micPaused ? "listening" : "off");
+                main.post(() -> {
+                    if (generation != handsFreeTranscriptionGeneration || capture != handsFreeCaptureGeneration || micPaused) return;
+                    if (!text.isEmpty()) toJs("onNativeSpeech", text);
+                });
             } catch (Exception e) {
                 Log.w(TAG, "hands-free transcription failed: " + e.getMessage());
-                toJs("onNativeSpeechError", "hands-free transcription failed");
-                toJs("onNativeHandsFreeState", handsFreeEnabled && !micPaused ? "listening" : "off");
-            } finally { if (c != null) c.disconnect(); }
+                main.post(() -> { if (generation == handsFreeTranscriptionGeneration && capture == handsFreeCaptureGeneration)
+                    toJs("onNativeSpeechError", "hands-free transcription failed"); });
+            } finally {
+                if (c != null) c.disconnect();
+                main.post(() -> {
+                    if (generation == handsFreeTranscriptionGeneration && capture == handsFreeCaptureGeneration) {
+                        handsFreeTranscribing = false; completeHandsFreeJob();
+                    }
+                });
+            }
         }, "owlbot-stt").start();
     }
 

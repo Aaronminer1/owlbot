@@ -1,4 +1,4 @@
-# Experimental shared Pico body controller — 7.14
+# Experimental shared Pico body controller — 7.16-sonar1
 
 Start with [the controller review guide](../../docs/PICO-CONTROLLER.md).
 This is OwlBot's adaptation of the GrowBot protocol/driver for a calibrated
@@ -14,7 +14,9 @@ notices. No model weights, MicroPython binaries or device configuration are bund
 | PicoRobotics.py | GPIO/PCA9685 output, calibration and retained head ports |
 | servo_channels.py | Saved channel names/endpoints and paced output |
 | named_gait.py / named_turn.py | Taught walking sequence and bounded turn with return Closed |
-| pico_head.py / gimbal_engine.py | Slow head positioning and optional holding |
+| pico_head.py / gimbal_engine.py | Paced head positioning and optional holding; head cap 400 microseconds/second |
+| body_bow.py / body_handoff.py | Calibrated front-leg/head bow and motion ownership handoff |
+| ultrasonic.py | Optional HC-SR04 acquisition, bounded timeout and freshness; not camera semantics |
 | shared_body.py | Versioned high-level command translation; no phone vision on the Pico |
 | stock_body.py / stock_fanout.py | Original GrowBot L/R posture/alternating-support interpretation |
 | stock_commands.py | Exact saved-gesture encoding and explicit turn/spin aliases |
@@ -26,7 +28,7 @@ Disconnect servo power and pause the controlling app. Back up the Pico's current
 files outside Git. Use MicroPython for **your exact wireless Pico board**; the
 maintainer's test used Pico 2 W with MicroPython 1.28.0.
 
-Copy the 13 Python modules in this directory to the Pico filesystem, choosing
+Copy the 16 Python modules in this directory to the Pico filesystem, choosing
 `main.py` as the boot entrypoint. `relay_chip.py` is an identical source mirror,
 not a second service to launch. Create a local `secrets.py` from the example.
 Do not upload the entire repository or overwrite existing calibration blindly.
@@ -45,11 +47,24 @@ physically as left or right. `turn_fraction` is calibrated linkage travel
 (0.02–0.60), not heading degrees. A heavier head may need holding enabled;
 holding consumes power and requires a suitable servo and supply.
 
-The seven saved gestures use `stock_commands.frames(op)`, with op 1–7 matching
+The eight saved gestures use `stock_commands.frames(op)`, with op 1–8 matching
 `NAMES`. Export their exact dictionaries into the robot's existing saved-gesture
 configuration; do not improvise the framing numbers. No GrowBot website patch
 is required. Existing arbitrary L/R spin-policy streams do not carry direction
 names and are NOT automatically converted to turns.
+
+Head movements are paced independently of gait speed; the current 400
+microseconds/second cap is not angular speed. Calibrate endpoints and center on
+the actual mount before powering it. The reverse gait and front-leg/head bow
+also require compatible saved channel assignments and limits.
+
+Ultrasonic acquisition is optional and disabled without configuration. See
+`ultrasonic.py` for its supported board/pin checks and settings. The commissioned
+remap is trigger GP28, echo GP21; the older GP19/GP18 pair is also supported.
+Verify voltage-safe sensor interfacing for your exact board before connecting
+an echo wire; never assume Pico and Pico 2 GPIO have identical electrical limits.
+Owner calibration and sensor configuration are not included. A reading describes
+one beam at the current head pose, not a complete occupancy map or a person ID.
 
 ## Host tests (no hardware)
 

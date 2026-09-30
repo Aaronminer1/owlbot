@@ -30,9 +30,8 @@ What this version adds over the stock driver
   sagging pack instead of just mysteriously resetting.
 * ``last_write()`` - what was actually commanded, for telemetry.
 
-Written to sit alongside GrowBot / Art of the Problem.
-GrowBot software: PolyForm Noncommercial 1.0.0; hardware/documentation have
-separate terms. See ../../THIRD_PARTY_NOTICES.md and the repository LICENSE.
+Written to sit alongside the GrowBot project (CC BY-NC 4.0 upstream) -
+keep credit to Art of the Problem.
 """
 
 from machine import Pin, PWM, I2C, ADC

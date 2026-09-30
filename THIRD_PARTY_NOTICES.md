@@ -54,4 +54,12 @@ Android Gradle tooling, Google ML Kit, model providers, Android speech engines, 
 
 ## OwlBot status
 
+### Development-only Canvas tests
+
+`@napi-rs/canvas` 0.1.100 is resolved from npm for the expression rendering tests.
+Its package declares the MIT license; source and license are maintained at
+https://github.com/Brooooooklyn/canvas . Its native dependencies retain their
+upstream notices. Neither node_modules nor these test binaries are committed or
+packaged in the Android app.
+
 OwlBot is a public, experimental work in progress distributed for noncommercial purposes under the root PolyForm Noncommercial 1.0.0 `LICENSE`. No API keys, Wi-Fi credentials, tokens, private identifiers, or user data belong in this repository.

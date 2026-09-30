@@ -22,6 +22,11 @@ assert.equal(reduced.body.messages.at(-1).tool_call_id,'step7');C.groups(reduced
 assert.match(reduced.body.messages.find(m=>m.content?.startsWith('Earlier completed')).content,/physical result unknown/);
 assert.equal(C.reasoningPolicy({model:'glm-5.3',reasoning_effort:'none',think:false}).reasoning_effort,'low');
 assert.equal(C.reasoningPolicy({model:'glm-5.3:cloud'}).clear_thinking,true);
+for(const model of ['glm-5.3-flash','glm-5.3-flash:cloud']){
+ const p=C.reasoningPolicy({model,think:false,reasoning_effort:'none'});
+ assert.equal(p.reasoning_effort,'low');assert.equal(p.think,undefined);assert.equal(p.clear_thinking,true);
+ assert.equal(C.completionBudget(model),4096);
+}
 assert.equal(C.reasoningPolicy({model:'gemma4:12b',think:false}).think,false,'unrelated provider settings must not change');
 assert.doesNotThrow(()=>C.compile({messages:[{role:'user',content:'large-window model'}]},{window:976000}));
 const image=C.compile({messages:[{role:'user',content:[{type:'text',text:'Inspect'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+'a'.repeat(500000)}}]}],max_tokens:500});
@@ -42,7 +47,8 @@ const box={console,TextEncoder,Date,Set,Map,JSON,Math,Promise,OwlContext:C,local
   conversationReplyTool:()=>({type:'function',function:{name:'reply_to_person',description:'Reply.',parameters:{type:'object',properties:{say:{type:'string'}},required:['say']}}}),
   functionalSelfSummary:()=>'Andrew, mounted in his calibrated body.',personalitySummary:()=>'Curious and mature.',soulSummary:()=>'',affectSummary:()=>'curious',backgroundSummary:()=>'',
   EXPRESSIONS:{happy:{},curious:{},neutral:{}},SELF_LIMITS:{initiativeIntervalSeconds:[45,180]},memSave:()=>{}};
-vm.createContext(box);vm.runInContext(source('const TOOLS = [','function gimbalReady(').replace(/\r/g,''),box);
+vm.createContext(box);vm.runInContext(fs.readFileSync(path.join(dir,'story-scenes.js'),'utf8'),box);
+vm.runInContext(source('const TOOLS = [','function gimbalReady(').replace(/\r/g,''),box);
 assert(vm.runInContext("TOOLS.some(t=>t.function.name==='speak')",box),'mid-investigation voice is a real tool, not just a prompt instruction');
 // TOOLS spelling has intentionally stable extraction verified below.
 assert(vm.runInContext('TOOLS.length',box)>20);
@@ -61,8 +67,13 @@ fields.contextWindow.value='976000';
 box.compileModelContext({body:JSON.stringify({model:'kimi-k2.7-code',messages:[{role:'user',content:'Inspect one frame'}],max_tokens:1200})});
 assert.equal(vm.runInContext('CONTEXT_STATS.last.window',box),256000,'vision requests must use the vision model capacity, not the larger brain window');
 const prompt=box.buildExecutiveContext(''),tools=box.executiveTools('');
-const normal=C.compile({messages:[{role:'system',content:prompt},{role:'user',content:'Nobody spoke. Explore a worthwhile curiosity.'}],tools,max_tokens:1200});
-assert(normal.stats.input+2224<16384,'real executive prompt and selected schemas fit');
+const executiveRequest={messages:[{role:'system',content:prompt},{role:'user',content:'Nobody spoke. Explore a worthwhile curiosity.'}],tools,max_tokens:1200};
+// The full current body toolset exceeds the conservative unconfigured 16k
+// fallback. Refuse that configuration, never silently discard the task; the
+// selected GLM route uses its explicit, much larger context window.
+assert.throws(()=>C.compile(executiveRequest),/Context budget exceeded/);
+const normal=C.compile(executiveRequest,{window:976000});
+assert(normal.stats.input+normal.stats.output+normal.stats.reserve<976000,'real executive fits the selected model');
 assert(tools.some(t=>t.function.name==='move'));assert(tools.some(t=>t.function.name==='propose_goal_candidates'));
 assert(tools.length<vm.runInContext('TOOLS.length',box));
 box.MIND.autonomyTurn=false;

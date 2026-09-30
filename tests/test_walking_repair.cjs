@@ -9,6 +9,7 @@ vm.createContext(box);vm.runInContext(source.slice(0,source.indexOf("$('#btnName
 vm.runInContext(part('function classifyActionResult(','function recordActionOutcome('),box);
 vm.runInContext('function readTool(name){'+part('    if(name==="read_sensors"){','    if(name==="get_position"){')+'}',box);
 box.nativeSensorLines=()=>['ambient temperature unavailable; compass unreliable; sensing paused'];box.mindLog=()=>{};
+box.spatialContext=()=> 'Echo distance unknown; no current aligned range.';
 assert.equal(box.classifyActionResult(box.readTool('read_sensors')),'completed');
 assert.equal(box.classifyActionResult(JSON.stringify({ok:false,error:'bridge failed'})),'failed');
 assert.equal(box.walkingVisionRoute(),'local');

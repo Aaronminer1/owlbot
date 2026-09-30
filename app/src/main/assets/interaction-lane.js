@@ -7,7 +7,8 @@ function humanConversationOwnsResources(){
   if(typeof storyOwnsResources==='function'&&storyOwnsResources())return true;
   // A paused story question is still an active shared activity. Do not turn
   // the child's thinking time into an unrelated social/vision/model turn.
-  if(typeof storyDiscussionActive==='function'&&storyDiscussionActive())return true;
+  if(typeof storyConversationOwnsResources==='function'?storyConversationOwnsResources():
+    typeof storyDiscussionActive==='function'&&storyDiscussionActive())return true;
   if(typeof identityEnrollmentActive==='function'&&identityEnrollmentActive())return true;
   // Active locomotion also owns inference; conversation can still enter its user lane.
   if(typeof NW!=='undefined'&&NW.running)return true;
@@ -15,12 +16,15 @@ function humanConversationOwnsResources(){
   return Boolean(MIND.activeUserTurn||MIND.pendingUser||MIND.userQueue?.length||hearing||
     // A conversational pause is room for a reply, not an immediate invitation
     // for old visual investigations to consume the next model slot.
-    (typeof VOICE!=='undefined'&&VOICE.busy)||Date.now()-(MIND.lastHumanInputAt||0)<45000);
+    MIND.directBodyBusy||(typeof VOICE!=='undefined'&&VOICE.busy)||Date.now()-(MIND.lastHumanInputAt||0)<(MIND.humanQuietWindowMs??45000));
 }
-function markHumanActivity(){
+function markHumanActivity(text){
   if(typeof storyHumanActivity==='function')storyHumanActivity();
   if(typeof musicHumanActivity==='function')musicHumanActivity();
   MIND.lastHumanInputAt=Date.now();
+  // A travel request invites follow-through, unlike a conversational pause.
+  // Before transcription (no text), hearing retains full conversation priority.
+  MIND.humanQuietWindowMs=typeof ownerMotionDirective==='function'&&ownerMotionDirective(text)==='resume'?5000:45000;
   if(MIND.abort&&!MIND.activeUserTurn)MIND.abort.abort();
   if(typeof PERCEPTION!=='undefined')PERCEPTION.abort?.abort();
   if(typeof BACKGROUND!=='undefined')for(const controller of BACKGROUND.running.values())controller.abort();

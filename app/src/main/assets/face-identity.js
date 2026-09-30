@@ -11,7 +11,7 @@ const IDENT={enabled:false,profiles:[],legacyCount:0,currentId:null,currentName:
  lastObserve:0,lastDescriptor:null,lastDescriptorAt:0,lastRealFaceAt:0,faceCount:0,quality:'not_started',error:'',engineMs:0,
  greetedPresence:false,askTimer:null,awaitingName:false,awaitingConsent:false,pendingName:null,enrolling:null,
  enrollmentGraceUntil:0,onboardingExpiresAt:0,reaskAfter:0,claimedProfileId:null,claimExpiresAt:0,
- consentAnchor:null,consent:null,generation:0,requestSeq:0,pending:new Map(),lastGuidanceAt:0};
+ consentAnchor:null,consent:null,generation:0,requestSeq:0,pending:new Map(),lastGuidanceAt:0,introductionRequestedUntil:0};
 let fdBusy=false,lastFaceDetectAt=0,faceDetector=null;
 let primaryCameraReturnTimer=null;
 function schedulePrimaryCameraReturn(){
@@ -68,6 +68,7 @@ function clearFaceVerification(){
  if(!IDENT.awaitingConsent){IDENT.sessionName=null;IDENT.sessionSelfReported=false;}
 }
 function cancelFaceEnrollment(reason='',announce=false){
+ IDENT.introductionRequestedUntil=0;
  IDENT.awaitingName=false;IDENT.awaitingConsent=false;IDENT.pendingName=null;IDENT.enrolling=null;
  IDENT.consentAnchor=null;IDENT.consent=null;IDENT.onboardingExpiresAt=0;
  clearTimeout(IDENT.askTimer);IDENT.askTimer=null;
@@ -82,7 +83,7 @@ function setFaceRecognitionEnabled(enabled,announce){
  cancelFaceEnrollment();clearFaceVerification();IDENT.lastDescriptor=null;IDENT.lastDescriptorAt=0;IDENT.faceCount=0;
  IDENT.greetedPresence=false;IDENT.reaskAfter=0;IDENT.unknownStreak=0;
  if(IDENT.enabled&&(!S.camOK||S.cameraFacing!=='front'))enableCamera('front');
- refreshFaceUI();if(announce)say(IDENT.enabled?'Face recognition is on. I will ask before saving a new face.':'Face recognition is off. Saved face profiles are kept until you delete them.');
+ refreshFaceUI();if(announce)say(IDENT.enabled?'Face recognition is on. I will ask before saving a new face.':'Face recognition is off. Saved face profiles are kept until you delete them.',{identityFlow:true});
 }
 function faceSimilarity(a,b){
  if(!validFaceVector(a)||!validFaceVector(b))return -1;
@@ -139,12 +140,22 @@ function cleanPersonName(text,allowBare){
 }
 function knownProfileForName(name){return IDENT.profiles.find(p=>p.name.toLowerCase()===String(name||'').toLowerCase())||null;}
 function repairIdentityAliases(){return 0;} // Never merge people based on similar names.
+function quietFaceStatusSpeech(text,request='',explicit=false){
+ if(explicit||/\b(?:who am i|have we met|(?:recognize|recognise|know|remember) me|my name|face (?:recognition|profile|template|enrollment)|remember my face|learn my face|introduce me)\b/i.test(request))return text;
+ // Defense at the speech boundary: a model may still verbalize private
+ // recognition uncertainty. Remove status sentences, not the useful answer.
+ const status=/^(?:(?:sorry|hi|hello|hmm)[,!:–—]?\s+)?(?:i (?:do not|don['’]t) (?:know who you are|know you|recogni[sz]e you|think we['’]ve met)|i (?:cannot|can['’]t|couldn['’]t|haven['’]t|have not) (?:recogni[sz]e|verify|confirm|match|identify) (?:you|your (?:face|identity))|i (?:recogni[sz]e[ds]?|identified|matched) (?:you|your face)|your (?:face|identity) (?:is|was|looks|seems) (?:unknown|unverified|unrecognized|unrecognised|not (?:recognized|recognised|verified))|face recognition (?:is|was) (?:on|off|unavailable|paused)|what (?:should i call you|is your name)\b)/i;
+ return String(text||'').split(/(?<=[.!?])\s+/u).filter(line=>!status.test(line.trim())).join(' ').trim();
+}
 function askUnknownPerson(){
+ // An unmatched/occluded face is uncertainty, not a stranger or permission
+ // to interrupt. Only an explicit introduction request owns this workflow.
+ if(now()>=IDENT.introductionRequestedUntil)return;
  if(!IDENT.enabled||APP.resting||APP.settings||needsAgentOnboarding()||verifiedIdentity()||identityEnrollmentActive()||IDENT.faceCount!==1||!IDENT.lastDescriptor||now()-IDENT.lastDescriptorAt>3000||now()<IDENT.reaskAfter||IDENT.greetedPresence)return;
  if(IDENT.unknownStreak<3||MIND.busy||VOICE.busy||EARS.on||['hearing','transcribing'].includes(EARS.handsFreeState))return;
  IDENT.awaitingName=true;IDENT.greetedPresence=true;IDENT.onboardingExpiresAt=now()+90000;
  if(typeof PERCEPTION!=='undefined')PERCEPTION.abort?.abort();
- say('Hi, I’m '+(BEING.identity.name||'Andrew')+'. I don’t think we’ve met. What should I call you?');refreshFaceUI();
+ say('What name should I use for this face profile?');refreshFaceUI();
 }
 function requestFaceConsent(name){
  name=cleanPersonName(name,true);if(!name)return false;
@@ -184,6 +195,14 @@ function forgetFaceProfile(id){
 function handleIdentityReply(text){
  if(!IDENT.enabled||APP.resting)return false;
  const raw=String(text||'').trim();
+ if(!identityEnrollmentActive()&&/^(?:please )?(?:remember my face|learn my face|introduce me|start face enrollment)[.!]?$/i.test(raw)){
+  const known=verifiedIdentity();
+  if(known){say('Your face is already saved as '+known.name+'.',{identityFlow:true});return true;}
+  IDENT.introductionRequestedUntil=now()+90000;IDENT.greetedPresence=false;IDENT.reaskAfter=0;
+  askUnknownPerson();
+  if(!IDENT.awaitingName)say('Look toward my selfie camera, one person at a time, and I can help you introduce yourself.');
+  return true;
+ }
  if(/^\s*(?:please )?(?:forget|delete|remove) my face(?: (?:template|profile))?[.!]?\s*$/i.test(raw)){
   const p=verifiedIdentity();if(p)forgetFaceProfile(p.id);else say('I cannot verify which profile is yours right now. Please select your profile under Face recognition in Settings and choose Forget selected face.');return true;
  }
@@ -196,7 +215,9 @@ function handleIdentityReply(text){
   say('Only if you want to: say yes, remember my face, or say no.');return true;
  }
  if(IDENT.awaitingName){const name=cleanPersonName(raw,true);if(name)requestFaceConsent(name);else say('What name should I call you? You can also say cancel.');return true;}
- const explicit=cleanPersonName(raw,false);if(explicit&&!verifiedIdentity()){requestFaceConsent(explicit);return true;}
+ // "I'm tired/bored/not sure" is ordinary conversation, not a person's name.
+ const explicit=/^(?:my name is|call me|i am called|i'm called)\s+/i.test(raw)?cleanPersonName(raw,false):'';
+ if(explicit&&!verifiedIdentity()){requestFaceConsent(explicit);return true;}
  return false;
 }
 function identityObserve(result){
@@ -231,7 +252,7 @@ function identityObserve(result){
   if(IDENT.candidateStreak>=3)setCurrentIdentity(match.profile,match.score);
  }else{
   clearFaceVerification();IDENT.unknownStreak++;
-  if(IDENT.unknownStreak===1&&!IDENT.greetedPresence&&now()>=IDENT.reaskAfter){
+  if(now()<IDENT.introductionRequestedUntil&&IDENT.unknownStreak===1&&!IDENT.greetedPresence&&now()>=IDENT.reaskAfter){
    // A new introduction owns the social moment, not the old solo mission.
    if(typeof markHumanActivity==='function')markHumanActivity();
   }
@@ -253,6 +274,8 @@ async function detectFaceNative(){
  if(APP.resting||APP.settings||thermalModerate()||fdBusy||!S.camOK)return false;
  if(NW.running||(typeof walkingStreamStatus==='function'&&walkingStreamStatus().active))return true;
  if(IDENT.enabled&&S.cameraFacing!=='front'){clearFaceVerification();IDENT.lastDescriptor=null;IDENT.lastDescriptorAt=0;IDENT.quality='Recognition paused while looking behind.';refreshFaceUI();return true;}
+ // Identity stays at its normal cadence. Head attention has a separate,
+ // small-frame presence sampler so recognition cannot stall head updates.
  if(now()-lastFaceDetectAt<1500)return true;
  const video=$('#vid');if(!video||video.readyState<2||!video.videoWidth)return false;
  lastFaceDetectAt=now();fdBusy=true;const generation=IDENT.generation,facing=S.cameraFacing;
@@ -265,7 +288,15 @@ async function detectFaceNative(){
    const result=await requestLocalFace(fdCanvas.toDataURL('image/jpeg',.85));
    if(generation!==IDENT.generation||!IDENT.enabled||APP.resting||APP.settings||facing!==S.cameraFacing)return true;
    if(result.error)throw Error(result.error);identityObserve(result);
-   if(result.count===1)markSeen(result.x+result.width/2,result.y+result.height/2,result.width,result.confidence,'native-face');
+   const fastGaze=typeof headFaceSamplingActive==='function'&&headFaceSamplingActive();
+   if(result.count===1&&!fastGaze)markSeen(result.x+result.width/2,result.y+result.height/2,result.width,result.confidence,'native-face');
+   else if(result.count===0&&!fastGaze&&typeof headFaceTrackingRequested==='function'&&headFaceTrackingRequested()&&NATIVE?.detectFace){
+    // Recognition needs a stricter crop than head attention. A local presence
+    // fallback may steer gaze, but is never passed to identityObserve and
+    // cannot name, enroll, or verify a person.
+    const presence=JSON.parse(NATIVE.detectFace(fdCanvas.toDataURL('image/jpeg',.5)));
+    if(presence.found)markSeen(presence.x+presence.width/2,presence.y+presence.height/2,presence.width,presence.confidence,'native-face');
+   }
    return true;
   }
   // Presence only: these detectors never create identity templates.

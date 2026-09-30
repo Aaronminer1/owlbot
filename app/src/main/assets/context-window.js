@@ -109,11 +109,17 @@
     // Ollama's GLM-5.3 card documents low/high/max, not none; default is max.
     // A generic "none" was exhausting the reply cap before tool calls appeared.
     // https://ollama.com/library/glm-5.3 (verified 2026-09-05)
-    if(/^glm[-_]5[._-]3(?::|$)/i.test(String(body.model||''))){
+    if(/^glm[-_]5[._-]3(?:[-_]flash)?(?::|$)/i.test(String(body.model||''))){
       const adjusted={...body,reasoning_effort:'low',reasoning:{effort:'low'},clear_thinking:true};
       delete adjusted.think;return adjusted;
     }
     return body;
+  }
+  function completionBudget(model){
+    // Output includes private reasoning. This is separate from the input
+    // context window and is a ceiling, not an instruction to be long-winded.
+    return /^glm[-_]5[._-]3(?:[-_]flash)?(?::|$)/i.test(String(model||''))?4096:
+      /\b(?:glm|kimi)\b/i.test(model)?2400:/\b(?:deepseek|reason|thinking|qwq)\b/i.test(model)?1400:800;
   }
   function terms(text){return [...new Set(String(text||'').toLowerCase().match(/[a-z0-9]+/g)||[])].filter(t=>t.length>2&&!stop.has(t));}
   function retrieve(records,query,{limit=8,characters=4200,offset=0}={}){
@@ -132,6 +138,6 @@
     }
     return {items:selected,nextOffset:index<unique.length?index:null,totalMatches:unique.length};
   }
-  root.OwlContext={DEFAULT_WINDOW,clip,estimate,dialogue,groups,compile,terms,retrieve,reasoningPolicy};
+  root.OwlContext={DEFAULT_WINDOW,clip,estimate,dialogue,groups,compile,terms,retrieve,reasoningPolicy,completionBudget};
   if(typeof module!=='undefined')module.exports=root.OwlContext;
 })(globalThis);

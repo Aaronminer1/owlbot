@@ -18,7 +18,7 @@ $forbidden = $tracked | Where-Object {
     $_ -eq 'firmware/pico/control_token.txt'
 }
 if ($forbidden) { $forbidden | ForEach-Object { Write-Host "Forbidden tracked path: $_" }; throw 'Private/runtime artifacts must not be tracked.' }
-$excludedDirectories = @('.git', '.gradle', 'build', '.idea', '.cxx', 'models')
+$excludedDirectories = @('.git', '.gradle', 'build', '.idea', '.cxx', 'models', 'node_modules')
 $excludedExtensions = @('.apk', '.aab', '.jar', '.class', '.bin', '.pb', '.tflite', '.litertlm', '.onnx',
     '.jpg', '.jpeg', '.png', '.gif', '.webp')
 $patterns = [ordered]@{
@@ -31,6 +31,8 @@ $patterns = [ordered]@{
     'JWT' = 'eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
     'literal bearer credential' = 'Bearer\s+[A-Za-z0-9._~-]{16,}'
     'AWS access key ID' = '(?:AKIA|ASIA)[A-Z0-9]{16}'
+    'Tailscale credential' = '(?i)tskey-[a-z]+-[a-z0-9_-]{12,}'
+    'Tailscale private state key' = '(?i)(?:privkey|machinekey|nodekey|discokey):[a-f0-9]{64}'
 }
 
 $files = Get-ChildItem -LiteralPath $repo -Recurse -Force -File | Where-Object {

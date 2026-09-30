@@ -7,7 +7,7 @@ const box={OwlStory,console,Date,Math,Map,Array,JSON,String,Number,Boolean,Error
  atob:s=>Buffer.from(s,'base64').toString('binary'),localStorage:{getItem:k=>stored.get(k)||null,setItem:(k,v)=>stored.set(k,v)},
  setTimeout(fn){timers.set(++serial,fn);return serial;},clearTimeout(id){timers.delete(id);},
  window:{},document:{hidden:false,addEventListener(){},getElementById(){return null;}},
- APP:{resting:false,settings:false},THERMAL:{paused:false},MIND:{voice:true},EARS:{paused:false,handsFree:true},
+ APP:{resting:false,settings:false},THERMAL:{paused:false},MIND:{voice:true},EARS:{paused:false,handsFree:false,handsFreeWanted:true},
  VOICE:{busy:false,holdMic:false,generation:0},FACE:{set(){}},caption(){},say(){},musicStop(){},
  voiceIdentitySnapshot:()=>({...base}),playBuffer:async bytes=>{played.push(Buffer.from(bytes).toString('utf8'));box.VOICE.holdMic=false;},sayDevice:async text=>played.push(text),
  NATIVE:{setMicPaused:p=>paused.push(p),keepAwake(){},speakNeural(text,name,pitch,rate,style,id){
@@ -25,8 +25,20 @@ async function settle(){for(let i=0;i<2000;i++)await Promise.resolve();}
  assert.equal(played.join('').replace(/\s/g,''),text.replace(/\s/g,''),'Every word of the longest book reaches playback, not a summary');
  assert.equal(run('STORY.index'),run('STORY.segments.length'));assert(requests.length>30);
  assert.equal(box.MIND.lastSpoke,12345,'Finished narration starts the ordinary social speech cooldown');
+ assert.equal(run('STORY.discussion.finished'),true,'Keep the ending as shared context');
+ assert.equal(box.storyConversationOwnsResources(),true,'Completion gives the listener a fresh reply window');
+ assert.match(box.storyDiscussionContext(),/JUST FINISHED STORY/);
+ assert.equal(box.storyHandleIntent('yes'),false,'A finished story cannot resume from a bare yes');
+ assert.equal(box.storyHandleIntent('no'),false,'A finished story must not consume unrelated replies');
+ box.MIND.lastHumanInputAt=Date.now()-45001;
+ assert.equal(box.storyConversationOwnsResources(),false,'Normal curiosity returns after the reply window');
+ assert.equal(box.storyDiscussionActive(),true,'Ending remains available for follow-up questions');
  assert(requests.every(r=>r.name===base.name&&r.rate<base.rate));
  assert.equal(base.pitch,0);assert.equal(base.rate,22);assert.equal(paused.at(-1),false);
+ for(const [object,key] of [[box.APP,'resting'],[box.APP,'settings'],[box.THERMAL,'paused'],[box.EARS,'paused'],[box.VOICE,'holdMic']]){
+   const count=paused.length;object[key]=true;box.storyReleaseMic();assert.equal(paused.length,count,'Respect '+key);object[key]=false;
+ }
+ box.EARS.handsFreeWanted=false;let pauseCount=paused.length;box.storyReleaseMic();assert.equal(paused.length,pauseCount,'PTT never reopens capture');box.EARS.handsFreeWanted=true;
  // Stop before synthesis returns: late audio cannot advance/restart the story.
  hold=true;played=[];requests=[];box.storyStart('goldilocks');const pending=requests[0];box.storyPause();
  box.storyCaptureReply(JSON.stringify({id:pending.id,audio:Buffer.from(pending.text).toString('base64')}));await settle();

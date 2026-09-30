@@ -20,16 +20,16 @@ function fixture(){
 const flush=()=>new Promise(r=>setImmediate(r));
 (async()=>{
   const t=fixture();assert.equal(t.box.handleDirectBodyIntent('Andrew walk forward'),true);await flush();
-  assert.deepEqual(t.spoken,['Checking the path before I walk.']);
+  assert.deepEqual(t.spoken,[],'normal walk startup stays silent');
   assert.equal(t.box.MIND.directBodyBusy,false,'pending stream does not hold direct command queue');
   assert.equal(t.starts(),1);
   t.fail('I cannot proceed in that direction: A person is in the next foot placement area.');await flush();
-  assert.equal(t.spoken.length,2,'async failure reaches owner even when the mind loop is off');
-  assert.match(t.spoken[1],/camera check reported/);assert.doesNotMatch(t.spoken.join(' '),/[{}]|accepted|startedAt|physicalArrivalVerified/);
+  assert.equal(t.spoken.length,1,'async failure reaches owner even when the mind loop is off');
+  assert.match(t.spoken[0],/camera check reported/);assert.doesNotMatch(t.spoken.join(' '),/[{}]|accepted|startedAt|physicalArrivalVerified/);
   assert.match(t.conversations.at(-1).reply,/could not complete/);
   assert.equal(t.box.walkingStreamStatus().completedCycles,0);
   for(const request of ['walk forward','Why did you stop walking?']){
-    assert.equal(t.box.physicalActionSpeech(JSON.stringify({accepted:true,active:true,completedCycles:0}),request),'Checking the path before I walk.');
+    assert.equal(t.box.physicalActionSpeech(JSON.stringify({accepted:true,active:true,completedCycles:0}),request),request==='walk forward'?'':'Checking the path before I walk.');
     assert.equal(t.box.physicalActionSpeech('{"active":',request),'I could not confirm the movement result.');
     assert.equal(t.box.physicalActionSpeech('{"secret":"internal diagnostic"}',request),'I could not confirm the movement result.');
   }
@@ -40,7 +40,7 @@ const flush=()=>new Promise(r=>setImmediate(r));
   moved.fail('Pico connection lost');await flush();assert.match(moved.spoken.at(-1),/^Walking stopped.*lost contact/);
   assert.match(moved.box.MIND.pendingAgentEvent,/already received/);
   const sleeping=fixture();sleeping.box.handleDirectBodyIntent('walk forward');await flush();sleeping.box.APP.resting=true;
-  sleeping.fail('rest interrupted walking');await flush();assert.equal(sleeping.spoken.length,1,'rest suppresses late speech');
+  sleeping.fail('rest interrupted walking');await flush();assert.equal(sleeping.spoken.length,0,'startup and late speech while resting remain silent');
   const c=fixture();c.box.startWalkingStream({onOutcome:()=>{throw Error('notification error');}});c.fail('camera failed');await flush();
   assert.equal(c.box.walkingStreamStatus().active,false,'notification failures cannot leave a session running');
   assert.equal(t.box.walkingStreamSpeech({outcome:'The owner said Stop.'}),'Stopped as requested.');

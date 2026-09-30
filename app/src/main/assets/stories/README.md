@@ -7,7 +7,7 @@ Use the local plain-text import control to add a text you have permission to use
 ## Child-to-child default (7.18)
 
 Each of the 12 stories now has a separately authored beginning-to-end retelling
-bundled in `../story-library.js`: everyday words, shorter sentences,
+in `story-sources/child-retellings.cjs`: everyday words, shorter sentences,
 contractions, natural dialogue and occasional gentle humor. These are adaptations,
 not unabridged quotations of the source. Main events and endings are retained;
 darker themes are still labeled. Original text and original record ids are unchanged.
@@ -41,8 +41,8 @@ the United States. Users elsewhere should check their jurisdiction. The source
 license is included in `GUTENBERG-LICENSE.txt`. No modern translation or edition
 is implied. The app does not include the illustrations.
 
-The development library compiler selected complete stories at explicit chapter
-boundaries. It removed illustration labels and print emphasis marks, normalized
+`tools/build_story_library.cjs` selects complete stories at explicit chapter
+boundaries. It removes illustration labels and print emphasis marks, normalizes
 line wrapping, and restores the missing decorative initial T in the source
 plain-text Velveteen Rabbit. No plot passages or endings are removed. Each
 entry includes a word count, SHA-256, edition, source and specific content note.
@@ -54,8 +54,9 @@ threatened destruction. They are labeled, and are not chosen as the default
 bedtime story or while the person has just expressed distress. The default is
 The Hare and the Tortoise. Full historical wording can include archaic language.
 
-Story text and checkpoints are stored on the phone. This community edition uses
-device TTS, not the private neural transport. The installed Android engine's network requirement
+Story text and checkpoints stay on the phone. With the Microsoft voice selected,
+each passage is sent to the existing speech service; reading is not promised
+offline. Device TTS uses the installed Android engine, whose network requirement
 depends on the selected engine/voice. Only one next passage is prepared ahead.
 The next passage is not requested after cancellation. Already in-flight synthesis
 may finish, but its late audio is discarded.
@@ -79,7 +80,7 @@ sentences and the interrupted sentence, not future story text. It is marked as
 quoted story data, not instructions or personal memory. The model is instructed
 to answer briefly, avoid unrequested spoilers, accept follow-ups, and wait for
 permission before resuming. Model behavior still needs real-device evaluation.
-The scene context is included for the configured cloud/tower brain provider.
+The same context is included for cloud/tower and on-phone brain providers.
 
 The reader enforces no unrequested read/restart tool call during a question.
 A short yes resumes only after a matching continuation offer completed speech,

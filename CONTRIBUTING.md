@@ -13,8 +13,10 @@ OwlBot welcomes careful experiments and documentation, but physical robots and p
 
 ```powershell
 pwsh scripts/check-secrets.ps1
+npm ci --ignore-scripts
 node scripts/validate-source.cjs
 node scripts/test-source.cjs
+python -m unittest discover -s tests -p "test_*.py"
 .\gradlew.bat clean assembleDebug
 ```
 

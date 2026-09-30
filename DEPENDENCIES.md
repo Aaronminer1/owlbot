@@ -2,7 +2,7 @@
 
 Review date: 2026-08-13
 
-Only direct build/runtime dependencies are listed here. Transitive libraries are resolved by Gradle or pip and retain their upstream terms. No third-party model weights are committed or packaged by this repository.
+Direct build/runtime dependencies and test tooling are listed here. Transitive libraries are resolved by Gradle, pip or npm and retain their upstream terms. No third-party model weights are committed or packaged by this repository. Test dependency inventory updated 2026-09-29.
 
 | Component | Version/range | How obtained | Governing source/terms |
 |---|---:|---|---|
@@ -12,6 +12,7 @@ Only direct build/runtime dependencies are listed here. Transitive libraries are
 | pyserial | `>=3.5,<4` | PyPI, user-installed for laptop bridge | BSD license; [upstream project](https://github.com/pyserial/pyserial) |
 | websockets | `>=16,<17` | PyPI, user-installed for laptop bridge | BSD-3-Clause; [upstream project](https://github.com/python-websockets/websockets) |
 | GitHub Actions checkout/setup-java | pinned major versions in workflow | GitHub Actions service | Used only for CI; not shipped in OwlBot |
+| @napi-rs/canvas | 0.1.100 | npm, locked in package-lock.json | MIT; [upstream](https://github.com/Brooooooklyn/canvas); development-only expression rendering tests, not packaged in Android |
 
 External endpoints—including Ollama/compatible model providers, Open-Meteo, search/news providers, Android speech services, and the GrowBot relay—are integrations rather than vendored dependencies. Their availability and terms are controlled by their operators. Users supply their own credentials where required.
 

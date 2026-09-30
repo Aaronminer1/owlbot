@@ -66,7 +66,7 @@ async function runDriveTurn(direction,options={}){
   if(options.sessionGuard&&['left','right'].includes(direction)&&!['left','right'].includes(observed))throw Error('Identify the physical Turn A direction before navigation turns.');
   const pattern=['a','b'].includes(direction)?direction:observed?(direction===observed?'a':'b'):(direction==='left'?'a':'b');
   const generation=CHANNEL_SETUP.generation;
-  const guard=()=>{if(options.sessionGuard)options.sessionGuard();if(generation!==CHANNEL_SETUP.generation||!bodyControllerReady())throw Error('Turn interrupted by Stop or connection change.');};
+  const guard=()=>{if(typeof ownerBodyMotionProblem==='function'&&!APP.settings&&ownerBodyMotionProblem())throw Error(ownerBodyMotionProblem());if(options.sessionGuard)options.sessionGuard();if(generation!==CHANNEL_SETUP.generation||!bodyControllerReady())throw Error('Turn interrupted by Stop or connection change.');};
   guard();
   const info=await channelCommand('info');guard();
   if(info.named_turn?.running||info.named_walk?.running||info.channel_state?.active!=null||info.channel_state?.queued)throw Error('Stop the current movement first.');
@@ -105,6 +105,7 @@ async function runDriveTurn(direction,options={}){
 }
 async function driveRobotAction(direction,options={}){
   if(!['forward','backward','left','right'].includes(direction))return;
+  if(typeof acceptOwnerMotionRequest==='function')acceptOwnerMotionRequest(['left','right'].includes(direction)?'turn '+direction:'walk '+direction);
   if(DRIVE_ROBOT.busy||NW.running||CHANNEL_SETUP.live||CHANNEL_SETUP.busy){$('#driveRobotStatus').textContent='Stop the current movement or slow adjustment first.';return;}
   if(!isDog6()||!bodyControllerReady()||S.sim){$('#driveRobotStatus').textContent='Connect a responding Pico first.';return;}
   DRIVE_ROBOT.busy=true;

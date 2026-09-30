@@ -229,6 +229,6 @@ class StockCommandTests(SharedBodyTests):
             self.assertTrue(self.commands.completed)
             pulses=[p for ch,p in self.board.writes[start:] if ch==9]
             self.assertEqual(pulses[-1],pulse)
-            self.assertTrue(all(abs(a-b)<=6 for a,b in zip(pulses,pulses[1:])))
+            self.assertTrue(all(abs(a-b)<=self.head.speed*.02 for a,b in zip(pulses,pulses[1:])))
 
 if __name__=='__main__': unittest.main()

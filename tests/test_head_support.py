@@ -45,6 +45,16 @@ class HeadSupportTests(unittest.TestCase):
         self.assertFalse(self.head.targets)
         self.assertEqual(self.board.retained_servo_ports,set())
 
+    def test_relay_uses_normal_head_speed_without_body_outputs(self):
+        ack=self.f.send(t='dog_cal',channel_action='head_move',pan=.12,tilt=0)
+        self.assertTrue(ack['ok'])
+        self.assertEqual(ack['state']['speed_us_s'],400)
+        self.tick(40)
+        done=self.f.send(t='dog_cal',channel_action='head_info')['state']
+        self.assertEqual(done['speed_us_s'],400)
+        self.assertTrue(done['holding'])
+        self.assertTrue(all(port in (9,10) for port,_ in self.board.writes))
+
     def test_completed_head_gesture_holds_without_renewals_or_body_outputs(self):
         self.engage();before=list(self.board.writes)
         self.tick(1000)

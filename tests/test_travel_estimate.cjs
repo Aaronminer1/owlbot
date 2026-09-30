@@ -9,6 +9,18 @@ assert.equal(r.nominalCycles,18);assert.equal(r.nextSegmentCycles,18);assert.equ
 assert.equal(box.estimateTravel({...request,distance_ft:10}).nextSegmentCycles,30);
 assert.equal(box.estimateTravel({...request,distance_ft:0}).nominalCycles,0);
 assert.equal(box.estimateTravel({...request,stop_short_ft:1}).nominalCycles,12);
+assert.equal(box.estimateTravel({...request,distance_ft:5,target_fraction:.5}).travelFt,2.5);
+assert.equal(box.estimateTravel({...request,distance_ft:5,target_fraction:1/3}).nominalCycles,10);
+assert.equal(box.estimateTravel({...request,distance_ft:5,target_fraction:.5,stop_short_ft:1}).travelFt,2.5,'stand-off caps approach; it does not shrink the halfway destination');
+assert.equal(box.estimateTravel({...request,distance_ft:.1}).wholeCyclesBeforeTarget,0,'never round a short approach into an obstacle');
+box.spatialSnapshot=()=>({visualTarget:{status:'likely',target:'white wall',bodySector:'forward',distanceMm:1524,ageMs:100}});
+assert.equal(box.estimateTravel({...request,use_visual_range:true,target:'wall',target_fraction:.5}).nominalCycles,15);
+assert.equal(box.estimateTravel({...request,use_visual_range:true,target:'person'}).calibrated,false);
+assert.equal(box.estimateTravel({...request,use_visual_range:true,direction:'backward'}).calibrated,false);
+box.spatialSnapshot=()=>({visualTarget:{status:'likely',target:'wall',bodySector:'right',distanceMm:1524,ageMs:100}});
+assert.equal(box.estimateTravel({...request,use_visual_range:true}).calibrated,false,'sideways camera range is not forward body travel');
+box.spatialSnapshot=()=>({visualTarget:null});assert.equal(box.estimateTravel({...request,use_visual_range:true}).calibrated,false);
+assert.throws(()=>box.estimateTravel({...request,target_fraction:2}));
 for(const delta of [{pace:'slow'},{direction:'backward'},{surface:'tile'}])assert.equal(box.estimateTravel({...request,...delta}).calibrated,false);
 box.NW.plan.cycles=3;assert.equal(box.estimateTravel(request).calibrated,true,'number requested does not change the per-cycle gait');
 box.NW.plan.lift_percent=60;assert.equal(box.estimateTravel(request).calibrated,false,'changed lift invalidates old calibration');box.NW.plan.lift_percent=50;

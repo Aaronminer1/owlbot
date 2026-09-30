@@ -4,7 +4,7 @@ const html=fs.readFileSync(path.join(dir,'growbot-brain.html'),'utf8');
 for(const [i,m] of [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].entries())new vm.Script(m[1],{filename:'inline-'+i+'.js'});
 for(const m of html.matchAll(/<script src="([^"]+)"/g)){assert(/^[a-z-]+\.js$/.test(m[1]));new vm.Script(fs.readFileSync(path.join(dir,m[1]),'utf8'),{filename:m[1]});}
 const native=fs.readFileSync(path.join(root,'app/src/main/java/dev/owlbot/brain/MainActivity.java'),'utf8');
-assert(!/LocalVisionEngine|LocalFaceEngine|EdgeTts|speakNeural/.test(native),'excluded native integrations must not be published');
+assert(!/LocalVisionEngine|LocalFaceEngine|OfflineSpeechEngine|EdgeTts|speakNeural/.test(native),'excluded native integrations must not be published');
 assert(!html.includes('<option value="phone-local">'),'community build must not advertise an unavailable phone brain');
 assert(!/id="walkVisionRoute"[^]*?<\/select>/.exec(html)?.[0].includes('value="local"'),'walking must not offer the excluded on-phone runtime');
 assert(native.includes('public void speakTagged('),'story playback requires tagged device-TTS completion');

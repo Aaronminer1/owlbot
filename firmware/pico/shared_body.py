@@ -19,7 +19,7 @@ class SharedBody:
                     paces=["creep", "slow", "fast", "run"],
                     continuous=True, camera_on_client=True,
                     keepalive_ms=1000, lease_ms=3000, preview_max_age_ms=2500,
-                    simultaneous_walk_turn=False, head_max_speed_us_s=150,
+                    simultaneous_walk_turn=False, head_max_speed_us_s=400,
                     turn_requires_pattern_a_direction=True,
                     head_coordinates="pan:left=-1,right=1;tilt:down=-1,up=1",
                     stock_two_leg_pose_compatible=True,

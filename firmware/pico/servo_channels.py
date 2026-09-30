@@ -122,7 +122,7 @@ class ServoChannels:
         self.board.calibration_port=None
         self.board.releaseAll()
 
-    def move(self, targets, calibration=False, speed=100, parallel=False):
+    def move(self, targets, calibration=False, speed=100, parallel=False, stock_walk=False, walk_support=False):
         if not isinstance(targets,list) or not 1<=len(targets)<=16:
             raise ValueError("one_to_sixteen_targets_required")
         if parallel and (calibration or len(targets)>2):
@@ -147,16 +147,44 @@ class ServoChannels:
             validated.append((ch,pulse))
         if parallel and len(set(ch for ch,pulse in validated)) != len(validated):
             raise ValueError("duplicate_paired_channel")
+        # Internal taught-walk preparation only; never a wire-protocol option.
+        # Re-engage an unknown leg at Down, not at an invented midpoint that
+        # lifts an already planted foot before putting it down again. This is
+        # an explicit support target, NOT knowledge of a released horn's pose.
+        if walk_support:
+            if calibration or stock_walk or parallel or len(validated) != 1:
+                raise ValueError('walk_support_requires_one_down_leg')
+            ch, pulse = validated[0]
+            c = self.channels[ch]
+            ends = {c['a_name'].lower():c['a_us'], c['b_name'].lower():c['b_us']}
+            if (set(ends) != set(('up','down')) or pulse != ends['down'] or
+                    str(targets[0].get('position','')).lower() != 'down' or
+                    ch in self.gaze.ports_dict().values() or c.get('group') == 'head'):
+                raise ValueError('walk_support_requires_one_down_leg')
+        # Internal GrowBot gait privilege, never a wire-protocol parameter.
+        # Do not raise the generic/manual/turn ceiling or the 150 us/s head cap.
+        if stock_walk and (calibration or any(
+                self.channels[ch]['name'].strip().lower() not in
+                ('left front leg','left rear leg','right front leg','right rear leg','slide','slider')
+                or self.channels[ch].get('group')=='head' for ch,pulse in validated)):
+            raise ValueError('stock_walk_speed_requires_legs_or_slide')
         if hasattr(self, 'stop_stock'): self.stop_stock()
         if not self.owning:
             self.dog.release();self.gaze.release()
             self.current={}
         self.owning=True
+        if walk_support:
+            # A held, known command is retained and ramps normally to Down.
+            # No PWM is emitted here; the regular scheduler writes the target.
+            ch, pulse = validated[0]
+            if ch not in self.current:
+                self.current[ch] = pulse
         self.queue=validated;self.active=None;self.last_tick=None
         self.parallel=bool(parallel)
         head_ports=set(self.gaze.ports_dict().values())
         head_move=any(ch in head_ports or self.channels[ch].get('group')=='head' for ch,pulse in validated)
-        self.calibration=bool(calibration);self.speed=max(20,min(150 if calibration or head_move else 1600,int(speed)))
+        ceiling=150 if calibration or head_move else (2000 if stock_walk else 1600)
+        self.calibration=bool(calibration);self.speed=max(20,min(ceiling,int(speed)))
         return len(validated)
 
     def engagement_position(self, ch):

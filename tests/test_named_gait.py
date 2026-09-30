@@ -37,6 +37,48 @@ class NamedWalkTests(unittest.TestCase):
     def tick(self,n=1):
         for _ in range(n):
             self.now+=20;self.channels.step();self.gait.step()
+    def test_unknown_feet_engage_down_without_midpoint_lift(self):
+        self.gait.save(self.plan)
+        before=json.dumps(self.channels.channels)
+        self.gait.start(bench=True)
+        first={}
+        while self.gait.index < self.gait.preparation_steps:
+            count=len(self.board.writes)
+            self.tick()
+            for port,pulse in self.board.writes[count:]:first.setdefault(port-1,pulse)
+            self.assertLess(self.now,2000)
+        self.assertEqual(first,{1:1550,3:1550,5:1550,2:1550})
+        self.assertEqual(json.dumps(self.channels.channels),before)
+        self.assertEqual(self.gait.status()['startup_implementation'],'walk-down-engagement-v1')
+
+    def test_held_position_is_not_overwritten_by_down_engagement(self):
+        self.channels.owning=True
+        self.channels.current={1:1450}
+        self.gait.save(self.plan);self.gait.start(bench=True)
+        self.assertEqual(self.channels.current[1],1450)
+        self.tick(2)
+        self.assertEqual(self.board.writes[0],(2,1453))
+
+    def test_generic_down_move_keeps_existing_midpoint_ramp(self):
+        self.channels.move([dict(channel=1,position='Down')],speed=1000)
+        self.tick(2)
+        self.assertEqual(self.board.writes[0],(2,1520))
+
+    def test_support_privilege_rejects_up_slide_and_calibration(self):
+        for target,extra in [(dict(channel=1,position='Up'),{}),
+                             (dict(channel=6,position='Forward'),{}),
+                             (dict(channel=1,position='Down'),{'calibration':True})]:
+            with self.assertRaises(ValueError):self.channels.move([target],walk_support=True,**extra)
+        self.assertEqual(self.board.writes,[])
+        self.assertFalse(self.channels.owning)
+
+    def test_non_diagonal_plan_keeps_previous_engagement(self):
+        self.plan['steps']=self.plan['steps'][:2]
+        self.gait.save(self.plan);self.gait.start(bench=True)
+        self.assertFalse(self.gait.walk_support_start)
+        self.tick(2)
+        self.assertEqual(self.board.writes[0],(2,1497))
+
     def test_save_and_boot_do_not_move_and_persist(self):
         self.gait.save(self.plan);restored=named_gait.NamedGait(self.channels)
         self.assertEqual(restored.plan["steps"],self.plan["steps"]);self.assertFalse(restored.running)

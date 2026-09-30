@@ -15,6 +15,8 @@ class StockBody(StockFanout):
     MIN_REVERSAL_MS = 100
     MAX_REVERSAL_MS = 1100
     NEUTRAL_STOP_MS = 200
+    WALK_SPEED_PERCENT = 125
+    WALK_SPEED_LIMIT = 2000
 
     def __init__(self, channels, walk):
         super().__init__(channels)
@@ -107,13 +109,20 @@ class StockBody(StockFanout):
         # feet-down Forward reset here dragged the body before its first step.
         self.phases=preparation+self.cycle
         self.preparation_count=len(preparation)
-        self.speed=min(1600,self.walk.plan.get('speed_us_s',600))
+        # GrowBot's interpreted walk only; leave the saved OwlBot plan, head,
+        # turns and legacy gesture rates untouched. Pulse slew is not ground speed.
+        self.speed=min(self.WALK_SPEED_LIMIT,
+                       self.walk.plan.get('speed_us_s',600)*self.WALK_SPEED_PERCENT//100)
 
     def _start_steps(self):
         self._make_phases()  # reject before taking ownership
-        previous=dict(self.channels.current)
-        super().stop()
-        self.channels.current=previous
+        # Transfer this lane's ownership, rather than release/reacquire it.
+        # stop() cleared owning; move() then erased the restored current dict
+        # and seeded each leg at Center, producing an unnecessary startup dip.
+        # These remain commanded positions, never encoder measurements.
+        self._begin()
+        if not self.channels.owning:
+            raise ValueError('stock_steps_need_owned_pose_lane')
         self.walking=True;self.mode='stock_walk';self.error=None
         self.run_id+=1;self.last_stop_reason=None
         self.frames=[];self.frame=None;self.targets={}
@@ -127,8 +136,13 @@ class StockBody(StockFanout):
         # move() normally preempts stock output. Only this synchronous internal
         # call bypasses that hook; external moves/stops still cancel immediately.
         self.internal_move=True
-        try:self.channels.move(self.phases[self.phase_index],speed=self.speed,
-                               parallel=len(self.phases[self.phase_index])==2)
+        try:
+            phase=self.phases[self.phase_index]
+            is_walk=all(self.channels.channels[t['channel']]['name'].strip().lower()
+                        in ('left front leg','left rear leg','right front leg',
+                            'right rear leg','slide','slider') for t in phase)
+            self.channels.move(phase,speed=self.speed if is_walk else min(1600,self.speed),
+                               parallel=len(phase)==2,stock_walk=is_walk)
         finally:self.internal_move=False
 
     def pose(self,left,right):
@@ -197,6 +211,10 @@ class StockBody(StockFanout):
             direction='configured_forward_not_inferred',completed_cycles=self.completed_cycles,
             completed_phases=self.completed_phases,reversals=self.reversals,
             phase_timeout_ms=self.MAX_REVERSAL_MS,steering_decoded=False,
+            speed_us_s=getattr(self,'speed',min(self.WALK_SPEED_LIMIT,
+                (self.walk.plan or {}).get('speed_us_s',600)*self.WALK_SPEED_PERCENT//100)),
+            speed_percent=self.WALK_SPEED_PERCENT,max_speed_us_s=self.WALK_SPEED_LIMIT,
+            startup_handoff='retain_commanded_positions',
             lift_percent=getattr(self,'walk_lift_percent',min(self.walk_lift_ceiling,(self.walk.plan or {}).get('lift_percent',50))),
             physical_feedback=False)
         out['slide_output']=self.walking

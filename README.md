@@ -54,9 +54,11 @@ OpenAI and Codex are credited for development assistance only. OwlBot is an inde
 
 ## What OwlBot does
 
-The current source snapshot is Android app **7.23-community** (`versionCode 176`) with separately versioned **Pico firmware 7.14**. This is a source release, not the private development APK. Private model runtimes/downloaders, weights, unofficial neural-voice transport and live-agent data remain excluded. See [the update notes](docs/UPDATE-7.23.md). **Reviewers: start with the [code review guide](docs/REVIEW-GUIDE.md)** and [Pico controller guide](docs/PICO-CONTROLLER.md). Its major systems are:
+The current source snapshot is Android app **7.54-community** (`versionCode 207`) with separately versioned **Pico firmware 7.16-sonar1**. This is a source release, not the private development APK. Private model runtimes/downloaders, weights, unofficial neural-voice transport and live-agent data remain excluded. **Latest: [September 29 update and validation limits](docs/UPDATE-7.54.md).** Reviewers: start with the [code review guide](docs/REVIEW-GUIDE.md) and [Pico controller guide](docs/PICO-CONTROLLER.md). Its major systems are:
 
 - An animated, expressive face rendered in an embedded HTML/Canvas interface.
+- Forty-eight contextual cartoon expressions, scene-aware storytelling, music/humming faces, and optional seasonal costumes. Expression ownership and expiry keep ordinary motion from leaving the face stuck in surprise.
+- Camera/range association and body-relative head orientation, optional HC-SR04 support, measured travel estimates, and exploration follow-through. A narrow ultrasonic beam is not a depth map or a guarantee that the whole path is clear.
 - A priority-based contextual expression resolver covering protection, danger, listening, thinking, speaking, success, frustration, uncertainty, relief, affection, play, focus, boredom, and reasoned model appraisal. Automatic failure produces confusion/focus rather than invented anger; anger requires an explicit current model appraisal with a concrete reason.
 - Push-to-talk and optional continuous conversation with configurable OpenAI-compatible model endpoints. On Android 13 and newer, hands-free mode uses local voice-activity detection and Android's system speech recognizer without requiring a transcription API key. The recognizer stays warm between turns and automatically replays the same buffered utterance once after a transient Android recognizer disconnect, so the person should not need to repeat it. OwlBot pauses microphone capture while speaking instead of rejecting later speech by text similarity, allowing a person to repeat, quote, confirm, or correct OwlBot's words. Partial and segmented results plus timeout recovery prevent a silent recognizer from swallowing a sentence; older Android versions can use an optional user-configured transcription provider.
 - Ollama Cloud support using an API key supplied by the individual user.
@@ -82,7 +84,7 @@ The current source snapshot is Android app **7.23-community** (`versionCode 176`
   resumption waits for permission and retains the interrupted sentence.
 - Sensor freshness/accuracy and nonvisual context, without claiming camera
   clearance or measured displacement from unrelated sensor readings.
-- Reviewed shared Pico source for calibrated walking, turning, slow head control,
+- Reviewed shared Pico source for calibrated forward/reverse walking, turning, bowing, paced head control,
   optional head holding and link recovery. Owner-specific calibration is not shipped.
 - GrowBot body control through the stock pairing-code relay without a separate control token.
 - A hardened direct-body protocol option for experimental controllers that implement token authentication.

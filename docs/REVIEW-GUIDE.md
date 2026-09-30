@@ -7,6 +7,11 @@ then follow the shared state and native boundaries below.
 
 ## Read in this order
 
+For this release, read [UPDATE-7.54.md](UPDATE-7.54.md) first. In addition to the
+navigation files below, review `exploration-momentum.js` (follow-through, not
+permission), `owner-motion-request.js` (explicit feet hold), and the tool-loop
+cancellation checks before/after asynchronous calls.
+
 1. [walk-stream.js](../app/src/main/assets/walk-stream.js): destination ownership,
    recovery, Stop and speech about outcomes.
 2. [named-walk.js](../app/src/main/assets/named-walk.js): saved gait bindings,
@@ -38,6 +43,11 @@ All JavaScript modules below are under `app/src/main/assets/`.
 | `drive-robot.js`: `DRIVE_ROBOT` | Manual controls and calibrated turn primitive | A turn fraction is not a measured angle |
 | `head-controller.js`: `HEAD` | Slow semantic pan/tilt, Pico or separate ESP32 routing | Body speed must not become head speed |
 | `travel-estimate.js` | Owner-measured samples keyed by gait/speed/direction/surface | Camera depth, live localization or motor permission |
+| `spatial-awareness.js` | Fresh range, limited calibration and body-relative evidence association | Full-room map, exact depth for every visible object, or obstacle-free space |
+| `exploration-momentum.js` | Active-task progress and bounded next-turn cadence | Override of Stop, explicit hold, provider cooldown or heat policy |
+| `owner-motion-request.js` | Persistent feet-still intent and deliberate resumption | Disabling the head or silently replaying queued motion |
+| `body-bow.js` | High-level calibrated bow request and truthful completion status | Unbounded servo choreography or physical confirmation |
+| `face-wardrobe.js` / `story-scenes.js` | Contextual face rendering, costumes and scene-linked expression cues | A feeling inferred from raw acceleration alone |
 | `executive-context.js` | Current situation, relevant tools and bounded context assembly | Loading a tool does not grant permission to run it |
 | `context-window.js`: `OwlContext` | Pure request budgeting/retrieval helpers, complete tool exchanges | Estimates are not the provider's exact token count |
 | `context-memory.js`: `CONTEXT_MEMORY` | IndexedDB archive, selected recall, attributed action episodes | A recalled reply is not verified current evidence |

@@ -45,7 +45,7 @@ const make=box.createWalkPreviewWorker;
   let movingCaptures=0;
   app.checkNamedWalkPathAligned=async(direction,guard,signal,options)=>{assert(started,'next view should be captured after walk starts');assert(options.keepAligned);assert.equal(options.headGeneration,42);movingCaptures++;return {capturedAt:Date.now()};};
   const result=await app.runNamedForwardWalk({cycles:6});
-  assert.match(result,/6 forward/);assert(movingCaptures>0);
+  assert.match(result,/6 completed forward/);assert(movingCaptures>0);
   assert.equal(calls2.filter(c=>c[0]==='walk_run').length,1,'one request owns all six cycles; no routine restart every three');
   assert(calls2.some(c=>c[0]==='walk_preview'));assert(!calls2.some(c=>c[0]==='walk_continue'));
   // Long approaches retain firmware's ten-cycle bound, with local continuation.
@@ -60,7 +60,7 @@ const make=box.createWalkPreviewWorker;
     longer.checkNamedWalkPath=async(direction,guard)=>{checks++;if(checks===2&&interrupt==='blocked')throw Error('blocked path');if(checks===2&&interrupt==='stop')longer.CHANNEL_SETUP.generation++;guard();return {headGeneration:42,capturedAt:Date.now()};};
     longer.checkNamedWalkPathAligned=async()=>({capturedAt:Date.now()});
     if(interrupt){await assert.rejects(longer.runNamedForwardWalk({cycles:18}),/blocked|interrupted/);assert.deepEqual(runs,[10]);}
-    else{assert.match(await longer.runNamedForwardWalk({cycles:18}),/18 forward/);assert.deepEqual(runs,[10,8]);assert.equal(checks,2);}
+    else{assert.match(await longer.runNamedForwardWalk({cycles:18}),/18 completed forward/);assert.deepEqual(runs,[10,8]);assert.equal(checks,2);}
   }
   let preference=null;const pref={localStorage:{getItem:()=>preference}};vm.createContext(pref);vm.runInContext(code,pref);
   assert.equal(pref.preferredApproachCycles(),6);preference='18';assert.equal(pref.preferredApproachCycles(),18);preference='31';assert.equal(pref.preferredApproachCycles(),6);

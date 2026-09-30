@@ -34,7 +34,8 @@ box.faceSave();box.clearFaceVerification();box.faceLoad();match(0);assert.equal(
 // Genuine unknown people remain unknown, and enrollment is still consent-first.
 clock+=130000;box.onSomeoneLeft();box.onSomeoneArrived();match(2);
 assert.equal(box.verifiedIdentity(),null);assert.equal(box.MEM.currentPerson,null);
-assert(id.awaitingName);assert.equal(spoken.length,1,'unknown introduction remains separate from matching known profiles');
+assert(!id.awaitingName);assert.equal(spoken.length,0,'unknown presence stays silent too');
+box.handleIdentityReply('introduce me');assert(id.awaitingName);assert.equal(spoken.length,1,'only a requested introduction speaks');
 box.handleIdentityReply('My name is Casey');assert(id.awaitingConsent);box.handleIdentityReply('No, do not save my face');assert(!id.enrolling);assert.equal(id.profiles.length,2);
 assert.match(html,/Respond naturally when a person actually greets you/);
 assert.match(fs.readFileSync(root+'executive-context.js','utf8'),/SILENT RECOGNITION/);

@@ -3,6 +3,13 @@ const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/growbot-b
 assert.match(html,/name:"speak",description:/,'speech handler must also have a discoverable tool schema');
 const box={musicGroundReply:text=>text};vm.createContext(box);
 vm.runInContext(html.slice(html.indexOf('function quietPhysicalRequest('),html.indexOf('function groundedSpokenReply(')),box);
+for(const request of ['Andrew take a bow','Andrew center your head','Andrew look straight ahead']){
+  for(const result of ['Pico completed the bow and rise within saved calibration; physical movement is not measured.',
+    'Pico completed the head target within its saved limits; physical position is not measured.']){
+    assert.equal(box.physicalActionSpeech(result,request),'');
+    assert.equal(box.physicalActionSpeech(result,'Tell me the movement result'),result);
+  }
+}
 for(const request of ['Andrew walk forward','Turn left','Tilt up','Look at me','Explore the room','ROUTE RECOVERY requested by the owner','AUTONOMOUS PERCEPTION UPDATE']){
   assert.equal(box.quietPhysicalRequest(request),true,request);
   for(const result of ['I finished three walk cycles.','Pico completed Turn B: all feet down.','Let me execute it.','The immediate path is blocked. I am looking for another route.'])assert.equal(box.physicalActionSpeech(result,request),'');
@@ -13,6 +20,11 @@ for(const request of ['Why did you stop walking?','Describe what you see','Tell 
 }
 assert.equal(box.physicalActionSpeech('Head movement failed: ack timeout','look left'),'Movement paused. The controller is not responding.');
 assert.equal(box.physicalActionSpeech('Fire nearby','Explore the room',true),'Fire nearby');
+for(const line of ['I see a wall five feet away.','I am requesting a walk cycle.','I am calculating three walk cycles.','The target is 0.8 meters ahead.','Adjusting my course to the left.']){
+ assert.equal(box.physicalActionSpeech(line,'Explore the room'),'',line);
+ assert.equal(box.physicalActionSpeech(line,'Explain what you are doing'),line,'explicit troubleshooting remains audible');
+}
+assert.equal(box.physicalActionSpeech('I need help; I am stuck.','Explore the room'),'I need help; I am stuck.');
 assert.equal(box.quietPhysicalRequest('Andrew are you enjoying your walk around the room'),false);
 const complete='I am enjoying seeing the room from a new angle. '+ 'The yellow container is interesting because its label might tell us what it is used for, although I cannot see what is inside it from here.';
 assert.equal(box.physicalActionSpeech(complete,'Andrew are you enjoying your walk around the room'),complete);

@@ -10,8 +10,9 @@ FN=next(n for n in ast.parse(SOURCE).body if isinstance(n,ast.FunctionDef) and n
 
 class Done(Exception):pass
 
-def simulate(mode='busy', duration=40000, wifi_drop=None, write_error=False):
-    clock=[0];frames=[];messages=[];faults=[];ticks=[0];pongs=[];handled=[]
+def simulate(mode='busy', duration=40000, wifi_drop=None, write_error=False,
+             head_factory=None, dispatch_ms=0):
+    clock=[0];frames=[];messages=[];faults=[];ticks=[0];pongs=[];handled=[];sensor_ticks=[0]
     class Poll:
         def register(self,*a):pass
         def poll(self,ms):
@@ -34,23 +35,28 @@ def simulate(mode='busy', duration=40000, wifi_drop=None, write_error=False):
         if write_error and m['t']=='ack':raise OSError('test network write failure')
         messages.append((clock[0],m))
     def step():ticks[0]+=1
+    def sensor_step():sensor_ticks[0]+=1
+    def handle(s,p):
+        handled.append(clock[0]);clock[0]+=dispatch_ms
+        return 'stock'
     engine=SimpleNamespace(step=step,mode='idle')
+    head=head_factory(clock) if head_factory else SimpleNamespace(step=lambda:None,poll_delay_ms=lambda:20)
     env=dict(_wdt=object(),LINK_DIAG={'connections':0,'pings_sent':0,'heartbeats_sent':0},
         select=SimpleNamespace(poll=Poll,POLLIN=1),
         time=SimpleNamespace(ticks_ms=lambda:clock[0],ticks_diff=lambda a,b:a-b),
         send_text=send_text,send_frame=send_frame,json=json,DEVID='test',BOOT_MS=0,
         DEADMAN_MS=500,POLL_MS=20,PING_MS=10000,HEARTBEAT_MS=5000,LINK_DEAD_MS=25000,LINK_START_MS=10000,
-        feed=feed,_frame_after=frame,_handle=lambda s,p:handled.append(clock[0]) or 'stock',
+        feed=feed,_frame_after=frame,_handle=handle,
         link_fault=faults.append,wlan=SimpleNamespace(isconnected=lambda:wifi_drop is None or clock[0]<wifi_drop),
-        print=lambda *a:None,**{k:engine for k in ('dog','gaze','channels','named_walk',
-            'stock_commands','named_turn','pico_head','stock_fanout')})
+        print=lambda *a:None,pico_head=head,sonar=SimpleNamespace(step=sensor_step),**{k:engine for k in ('dog','gaze','channels','named_walk',
+            'stock_commands','named_turn','stock_fanout')})
     exec(compile(ast.Module(body=[FN],type_ignores=[]),'actual serve','exec'),env)
     error=None
     try:env['serve'](Stream(),object())
     except Done:pass
     except OSError as e:error=str(e)
     return dict(now=clock[0],frames=frames,messages=messages,faults=faults,
-                ticks=ticks[0],handled=handled,diag=env['LINK_DIAG'],error=error)
+                ticks=ticks[0],sensor_ticks=sensor_ticks[0],handled=handled,diag=env['LINK_DIAG'],error=error)
 
 class RelayHeartbeatTests(unittest.TestCase):
     def test_busy_stream_keeps_fixed_heartbeats_and_motor_ticks(self):
@@ -62,7 +68,8 @@ class RelayHeartbeatTests(unittest.TestCase):
             self.assertIsNone(m['rid']);self.assertEqual(m['event'],'heartbeat')
             self.assertFalse(m['physical_feedback'])
             self.assertNotIn('completed',m)
-        self.assertEqual(r['ticks'],2000*8)
+        self.assertEqual(r['ticks'],2000*7)
+        self.assertEqual(r['sensor_ticks'],2000)
         self.assertEqual(len(r['handled']),2000)
         self.assertEqual(r['faults'],[])
         self.assertEqual(r['diag']['heartbeats_sent'],8)

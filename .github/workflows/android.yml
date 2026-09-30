@@ -26,6 +26,7 @@ jobs:
 
       - name: Validate and test bundled JavaScript
         run: |
+          npm ci --ignore-scripts
           node scripts/validate-source.cjs
           node scripts/test-source.cjs
 

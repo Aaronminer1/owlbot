@@ -46,6 +46,11 @@ box.MIND.activeUserTurn=true;box.MIND.abort={abort:()=>assert.fail('hearing must
 box.MIND.activeUserTurn=false;box.MIND.abort={abort:()=>aborted++};box.markHumanActivity();assert.ok(aborted>2);assert.equal(box.humanConversationOwnsResources(),true);
 clock+=30000;assert.equal(box.humanConversationOwnsResources(),true,'a conversational pause does not invite old investigations');
 clock+=15001;assert.equal(box.humanConversationOwnsResources(),false,'quiet time restores background initiative');
+box.ownerMotionDirective=t=>t==='Walk forward eight cycles'?'resume':null;
+box.markHumanActivity('Walk forward eight cycles');assert.equal(box.humanConversationOwnsResources(),true);
+clock+=5001;assert.equal(box.humanConversationOwnsResources(),false,'A walk request does not impose a 45-second conversation silence');
+box.MIND.directBodyBusy=true;assert.equal(box.humanConversationOwnsResources(),true,'Executing direct movement still owns resources');box.MIND.directBodyBusy=false;
+box.markHumanActivity('Tell me a story');clock+=6000;assert.equal(box.humanConversationOwnsResources(),true,'Ordinary conversation retains its full window');
 for(const name of ['pumpBackgroundJobs','selfScheduleTick','perceptionTick'])assert.match(extract(name,'\n}'),/humanConversationOwnsResources\(\)/);
 assert.match(extract('earsStart','function earsFinish'),/MIND\.abort&&!MIND\.activeUserTurn/);
 assert.doesNotMatch(lane,/wsSend\(|runTool\(|channelCommand\(/,'conversation arbitration must not command hardware');

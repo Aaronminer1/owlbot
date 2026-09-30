@@ -18,11 +18,18 @@ const options={keepAligned:true,headGeneration:7,target:'doorway mat',corridor:'
  calls=[];replies=['UNKNOWN'];await assert.rejects(b.checkNamedWalkPathAligned('forward',()=>{},null,options));assert.equal(calls.length,1);
  calls=[];replies=['CENTER','CLEAR'];result=await b.checkNamedWalkPathAligned('forward',()=>{},null,options);assert.equal(result.steering,undefined);
  calls=[];replies=['RIGHT','CLEAR'];let guarded=0;await assert.rejects(b.checkNamedWalkPathAligned('forward',()=>{if(calls.length===1&&++guarded>=1)throw Error('Owner Stop');},null,options),/Owner Stop/);assert.equal(calls.length,1);
- route='cloud';calls=[];replies=['CENTER',JSON.stringify({path:'clear',floor_visible:true,evidence:'Nearby floor is visibly clear'})];
+ route='cloud';calls=[];replies=[JSON.stringify({path:'clear',floor_visible:true,evidence:'Nearby floor is visibly clear',route_location:'center',target_near:false})];
  b.PROVIDERS={configured:{}};b.mindHeaders=()=>({});b.grabFrameDataUrl=async()=> 'cloud-frame-'+(++frame);
  b.mindFetch=async(url,opts)=>{calls.push({image:'cloud',prompt:JSON.parse(opts.body).messages[0].content[0].text});return {ok:true,json:async()=>({choices:[{message:{content:replies.shift()},finish_reason:'stop'}]})};};
  b.localVisionInfer=()=>assert.fail('Cloud-selected navigation must not silently use local inference');
- result=await b.checkNamedWalkPathAligned('forward',()=>{},null,options);assert.equal(result.path,'clear');assert.equal(calls.length,2);
+ result=await b.checkNamedWalkPathAligned('forward',()=>{},null,options);assert.equal(result.path,'clear');assert.equal(calls.length,1,'Provider course and clearance use one shared fresh frame');
+ assert.match(calls[0].prompt,/route_location/);assert.match(calls[0].prompt,/immediate travel corridor/);
+ const combined={path:'clear',floor_visible:true,evidence:'Nearby floor is visibly clear',route_location:'right',target_near:false};
+ calls=[];replies=[JSON.stringify(combined)];result=await b.checkNamedWalkPathAligned('forward',()=>{},null,options);assert.equal(result.steering,'right');assert.equal(calls.length,1);
+ for(const patch of [{path:'blocked'},{path:'uncertain'},{floor_visible:false},{route_location:'unknown'},{route_location:null},{target_near:true},{target_near:'false'}]){
+  calls=[];replies=[JSON.stringify({...combined,...patch})];await assert.rejects(b.checkNamedWalkPathAligned('forward',()=>{},null,options));assert.equal(calls.length,1);
+ }
+ for(const malformed of ['RIGHT','CLEAR RIGHT','{}','[]','{"path":"clear"}'])assert.throws(()=>b.parseCombinedWalkCourse(malformed,'doorway mat'));
  assert.equal(b.walkingUsesLocalVision('local',false),false);assert.equal(b.walkingUsesLocalVision('cloud',true),false);
- console.log('PASS: selected cloud/local navigation routes, separate fresh clearance, hazard/unknown/target priority and Stop between stages.');
+ console.log('PASS: provider single-frame course+clearance, local separate labels, hazard/unknown/target priority, strict combined schema and Stop between stages.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

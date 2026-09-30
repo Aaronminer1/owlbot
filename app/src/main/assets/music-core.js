@@ -45,7 +45,7 @@
       tracks.push({id:track,name});
     }
     events.sort((a,b)=>a.tick-b.tick);
-    const notes=[],active=new Map(),pedal=new Map();let tick=0,seconds=0,us=500000;
+    const notes=[],tempos=[{time:0,beat:0,bpm:120}],active=new Map(),pedal=new Map();let tick=0,seconds=0,us=500000;
     function release(key,at,force=false){
       const list=active.get(key)||[];
       for(const n of list){if(force||n.released){n.duration=Math.max(.01,at-n.start);notes.push(n);}}
@@ -54,7 +54,7 @@
     for(const e of events){
       seconds+=(e.tick-tick)*us/(division*1e6);tick=e.tick;
       if(seconds>900)throw Error('MIDI exceeds 15 minutes');
-      if(e.type==='tempo'){us=e.us;continue;}
+      if(e.type==='tempo'){us=e.us;tempos.push({time:seconds,beat:tick/division,bpm:6e7/us});continue;}
       const lane=e.track+':'+e.channel,key=lane+':'+e.note;
       if(e.type==='on'){
         // Retriggering a sustained pitch releases its previous pedal tail.
@@ -73,7 +73,7 @@
     for(const key of [...active.keys()])release(key,seconds,true);
     if(!notes.length||notes.length>16000||seconds>900)throw Error('Empty or oversized MIDI score');
     notes.sort((a,b)=>a.start-b.start||b.note-a.note);
-    return {notes,tracks,duration:Math.max(seconds,...notes.map(n=>n.start+n.duration)),format,division};
+    return {notes,tracks,tempos,duration:Math.max(seconds,...notes.map(n=>n.start+n.duration)),format,division};
   }
   // A single hum cannot sing both hands or chords. Follow the highest active
   // right-hand note, retaining every section, rest, repeat and the full timeline.

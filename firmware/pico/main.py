@@ -49,6 +49,9 @@ from pico_head import PicoHead
 from shared_body import SharedBody
 from stock_body import StockBody
 from stock_commands import StockCommands
+import ultrasonic
+
+sonar = ultrasonic.load()  # opt-in, spare GPIO only; never owns servo outputs
 
 HOST = "growbot-relay.growbot.workers.dev"
 # Each board self-assigns a stable, unique pairing code from its hardware id, so two
@@ -332,7 +335,7 @@ def _controller_diagnostics():
     result = {
         "host": "Pico 2 W",
         "board": "Waveshare Pico Servo Driver",
-        "firmware": "owlbot-pico-7.14",
+        "firmware": "owlbot-pico-7.16-sonar1",
         "servo_channels": 16,
         "protocol": 2,
         "uptime_ms": time.ticks_diff(time.ticks_ms(), BOOT_MS),
@@ -384,6 +387,12 @@ def _handle(s, pl):
     if not isinstance(m, dict):
         return None
     t = m.get("t")
+    # Compact sensor query uses an already relayed envelope. Return BEFORE
+    # command cancellation/arbitration: telemetry must not interrupt a gait,
+    # renew its lease, support the head or alter any actuator state.
+    if t == 'dog_cal' and m.get('channel_action') == 'range_info':
+        _ack(s, m, True, ultrasonic=sonar.status(), physical_feedback=False)
+        return 'info'
     commands = globals().get('stock_commands')
     head = globals().get('pico_head')
     # STOP is also sent before each GrowBot action: freeze head motion but
@@ -397,8 +406,13 @@ def _handle(s, pl):
             op = commands.decode(m.get('steps')) if t == 'act' else commands.named_opcode(m.get('name'))
             if op is not None:
                 if stock_fanout.active:
-                    raise ValueError('stop_stock_motion_before_saved_command')
-                state = commands.start(op, m.get('mode', 'replace'))
+                    if m.get('pose_handoff') != 'stock-pose-hold-v1' or op != 8:
+                        raise ValueError('stop_stock_motion_before_saved_command')
+                    from body_handoff import transfer
+                    state = transfer(stock_fanout, channels,
+                                     lambda: commands.start(op, m.get('mode', 'replace')))
+                else:
+                    state = commands.start(op, m.get('mode', 'replace'))
                 queued = sum(x['ms'] for x in m['steps']) if t == 'act' else state['command_window_ms']
                 _ack(s, m, True, queued_ms=queued, saved_body_command=state,
                      physical_feedback=False)
@@ -469,6 +483,7 @@ def _handle(s, pl):
             elif action=="info":
                 extra = {'body_contract': shared_body.capabilities()} if shared_request else {}
                 extra['stock_pose'] = stock_fanout.status()
+                extra['pose_handoff'] = 'stock-pose-hold-v1'
                 if commands: extra['saved_body_command'] = commands.status()
                 _ack(s,m,True,channel_state=channels.status(),named_walk=named_walk.status(),walk_plan=named_walk.plan,named_turn=named_turn.status(),**extra)
             elif action=='turn_run':
@@ -494,7 +509,13 @@ def _handle(s, pl):
                         (m.get('pace') is not None and speeds.get(m['pace']) != named_walk.run_speed) or
                         (m.get('cycles') is not None and m['cycles'] != named_walk.run_cycles)):
                         raise ValueError('stop_walk_before_changing_parameters')
-                state=named_walk.start(m.get("direction","forward"),m.get("path_clear",False),m.get("bench",False),m.get('continuous',False),m.get('pace'),m.get('cycles'))
+                if stock_fanout.active and m.get('pose_handoff') == 'stock-pose-hold-v1':
+                    if named_walk.running or named_turn.running:
+                        raise ValueError('stop_named_motion_before_pose_handoff')
+                    from body_handoff import transfer
+                    state=transfer(stock_fanout,channels,lambda: named_walk.start(m.get("direction","forward"),m.get("path_clear",False),m.get("bench",False),m.get('continuous',False),m.get('pace'),m.get('cycles')))
+                else:
+                    state=named_walk.start(m.get("direction","forward"),m.get("path_clear",False),m.get("bench",False),m.get('continuous',False),m.get('pace'),m.get('cycles'))
                 if head: head.support()
                 _ack(s,m,True,named_walk=state,physical_feedback=False)
             elif action=='walk_keepalive':
@@ -657,6 +678,7 @@ def _handle(s, pl):
         return "stop"
     if t == "dog_info":
         _ack(s, m, True, profile="dog6", ports=_all_ports(), status=dog.status(), gaze=gaze.status(),
+             ultrasonic=sonar.status(),
              named_walk=named_walk.status(),stock_pose=stock_fanout.status(),
              controller=_controller_diagnostics(), observability={
                  "pico_software_state": True,
@@ -730,19 +752,26 @@ def serve(s, raw):
     n = 0; nlast = 0; last = now
     while True:
         feed()
-        # wait up to POLL_MS for a frame to START (so the act engine keeps ticking between frames).
+        # Pay any due head update before network work; do not add a full poll
+        # delay on top of time already spent dispatching the previous frame.
+        pico_head.step()
+        poll_ms = min(POLL_MS, pico_head.poll_delay_ms())
+        # Wait only until the next head deadline (or normal body poll cadence).
         # Poll the TLS stream, not its underlying raw socket. TLS may already
         # have consumed an entire record containing several WebSocket frames;
         # raw readability then goes false although decrypted frames remain.
         b0 = None
         try:
             LINK_DIAG["io"] = "poll"
-            if poll.poll(POLL_MS):
+            if poll.poll(poll_ms):
                 LINK_DIAG["io"] = "first_byte_read"
                 b0 = s.read(1)
         except OSError as e:                            # a real socket/ssl error → drop & let main() re-dial
             link_fault(e)
             print("read err:", e); return
+        # Poll/read may consume the remaining head budget. Service it before
+        # parsing/dispatching a frame; the deadline prevents duplicate writes.
+        pico_head.step()
         if b0 == b"":                                   # empty read = relay closed the socket
             link_fault("relay closed the stream")
             print("conn closed by relay"); return
@@ -777,6 +806,7 @@ def serve(s, raw):
         named_turn.step()
         pico_head.step()
         stock_fanout.step()
+        sonar.step()  # edge capture is IRQ driven; no wait for an echo here
         if drive_on and time.ticks_diff(time.ticks_ms(), last_pose) > DEADMAN_MS:
             dog.stop(hold=True); drive_on = False
             print("dead-man: dog settled to stable rest (silence)")

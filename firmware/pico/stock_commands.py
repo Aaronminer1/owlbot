@@ -9,7 +9,7 @@ The channel calibration remains authoritative. No output or movement on import.
 import time
 
 NAMES = ('turn left', 'turn right', 'look left', 'look right',
-         'look up', 'look down', 'look ahead')
+         'look up', 'look down', 'look ahead', 'take a bow')
 # Preserve 15% for existing profiles; this body's commissioned profile can opt
 # into up to 60%. This is linkage travel, NOT degrees of body heading.
 PAN_EXTENT = 0.60
@@ -25,6 +25,8 @@ TURN_ALIASES = {'spin left': 1, 'spin_left': 1, 'turn left': 1, 'turn_left': 1,
 def named_opcode(name):
     if not isinstance(name, str):
         return None
+    if name in ('take a bow', 'take_a_bow', 'bow'):
+        return 8
     return TURN_ALIASES.get(name)
 
 
@@ -32,10 +34,10 @@ def frames(op):
     if type(op) is not int or not 1 <= op <= len(NAMES):
         raise ValueError('unknown_saved_body_command')
     values = (87, 93, 88, 90 + op, 107 - op, 92, 86, 90)
-    # 60% pan can travel 1200 us across both sides: 8 s at 150 us/s.
+    # 60% pan can travel 1200 us across both sides: 6 s at 200 us/s.
     # Use the browser's existing eight-frame/2000-ms-per-frame contract to
     # reserve 10.286 s for pan, without modifying website code or speeding up.
-    durations = ((137, 149, 1500, 1500, 1500, 1500, 2000, 2000) if op in (3, 4)
+    durations = ((137, 149, 1500, 1500, 1500, 1500, 2000, 2000) if op in (3, 4, 8)
                  else (137, 149, 163, 181, 193, 197, 2000, 2000))
     return [dict(l=v, r=v, ms=ms) for v, ms in zip(values, durations)]
 
@@ -80,6 +82,7 @@ class StockCommands:
         self.completed = False
         self.return_closed = False
         self.window_ms = 4800
+        self.bow = None
 
     def turn_fraction(self):
         value = self.config.get('turn_fraction', 0.15)
@@ -96,7 +99,14 @@ class StockCommands:
             raise ValueError('stop_active_motion_before_saved_command')
         if self.channels.active is not None or self.channels.queue:
             raise ValueError('finish_manual_motion_before_saved_command')
-        if op <= 2:
+        if op == 8:
+            # Lazy import keeps the new executor out of ordinary walking/head
+            # startup; one explicit command owns the complete bounded bow.
+            from body_bow import BodyBow
+            if self.bow is None:
+                self.bow = BodyBow(self.channels,self.head,self.walk)
+            self.bow.start()
+        elif op <= 2:
             fraction = self.turn_fraction()
             if fraction is None:
                 raise ValueError('saved_turn_fraction_must_be_0.02_to_0.60')
@@ -140,18 +150,27 @@ class StockCommands:
         self.return_closed = False
         self.run_id += 1
         self.started = time.ticks_ms()
-        self.window_ms = 10000 if op in (3, 4) else 4800
+        self.window_ms = 8000 if op == 8 else 10000 if op in (3, 4) else 4800
         return self.status()
 
     def cancel(self):
         active, self.active = self.active, None
-        if active and active.startswith('turn'):
+        if active == 'take a bow':
+            self.bow.cancel()
+            self.error = self.bow.error
+        elif active and active.startswith('turn'):
             self.turn.cancel()
         elif active:
             self.head.stop()
 
     def step(self):
         if not self.active:
+            return
+        if self.active == 'take a bow':
+            self.bow.step()
+            if not self.bow.running:
+                self.completed, self.error = self.bow.completed, self.bow.error
+                self.active = None
             return
         age = time.ticks_diff(time.ticks_ms(), self.started)
         if age >= self.window_ms:
@@ -193,7 +212,9 @@ class StockCommands:
                     pan_inverted=self.config.get('pan_inverted') is True,
                     active=self.active, last=self.last, error=self.error,
                     completed=self.completed, return_closed_commanded=self.return_closed,
-                    run_id=self.run_id, head_max_speed_us_s=150,
+                    run_id=self.run_id, head_max_speed_us_s=400,
                     turn_fraction=self.turn_fraction(), pan_extent=PAN_EXTENT,
                     tilt_extent=TILT_EXTENT, command_window_ms=self.window_ms,
+                    bow_implementation='front-head-bow-v1',
+                    bow=self.bow.status() if self.bow else None,
                     physical_feedback=False)

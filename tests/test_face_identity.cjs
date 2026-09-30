@@ -16,7 +16,9 @@ for(const no of ['okay, do not save my face','yes, no thanks','no','not now','do
 for(const ambiguous of ['yes','okay','maybe later','yes remember his face','yesterday I said yes'])assert.equal(box.faceConsentAnswer(ambiguous),null,ambiguous);
 assert.equal(box.faceConsentAnswer('Yes, remember my face!'),true);
 assert.equal(box.beginFaceEnrollment('Aaron'),false,'direct enrollment cannot bypass consent');
-observe();observe();observe();assert(id.awaitingName,'Andrew initiates introduction after stable unknown face');
+observe();observe();observe();assert(!id.awaitingName,'Unmatched frames stay silent, not an automatic introduction');assert.equal(spoken.length,0);
+for(const line of ["I'm tired","I am bored","I'm not sure","I'm happy to see you"])assert.equal(box.handleIdentityReply(line),false,'Ordinary speech is not enrollment: '+line);
+assert(box.handleIdentityReply('remember my face'));assert(id.awaitingName,'An explicit request begins the introduction');
 box.handleIdentityReply('My name is Aaron');assert(id.awaitingConsent);assert.equal(id.profiles.length,0);assert.equal(box.MEM.currentPerson,null);
 box.handleIdentityReply('okay, do not save my face');assert(!id.enrolling);assert(!id.awaitingConsent);assert.equal(Object.keys(saved).length,0,'decline persists no biometric data');
 assert(box.requestFaceConsent('Aaron'));box.handleIdentityReply('yes');assert(!id.enrolling,'a bare yes is ambiguous');
@@ -34,6 +36,8 @@ observe();observe();assert.equal(box.verifiedIdentity(),null);observe();assert.e
 assert.equal(box.MEM.currentPerson,id.profiles[0].id,'stable person ID, not fuzzy name merge');
 assert(!box.requestFaceConsent('Aaron'),'existing profile cannot be overwritten by a claimed name');
 observe(b);assert.equal(box.verifiedIdentity(),null,'different face is immediately unknown');
+const spokenBefore=spoken.length;id.greetedPresence=false;id.reaskAfter=0;
+observe(b);observe(b);observe(b);assert.equal(spoken.length,spokenBefore,'Losing a match cannot announce a stranger or restart enrollment');
 id.profiles.push({...id.profiles[0],id:'other',name:'Alex'});assert.equal(box.matchFace(a),null,'ambiguous equal matches remain unknown');id.profiles.pop();
 const legacy={...id.profiles[0],engine:'pixels-v3'};assert.equal(box.validFaceProfile(legacy),false);
 const noConsent={...id.profiles[0],consent:null};assert.equal(box.validFaceProfile(noConsent),false);
@@ -41,6 +45,14 @@ const personId=id.profiles[0].id;assert(box.forgetFaceProfile(personId));assert.
 observe();assert(box.requestFaceConsent('Other'));box.handleIdentityReply('yes remember my face');failSave=true;
 for(let i=0;i<8;i++)observe();assert.equal(id.profiles.length,0,'storage failure must not claim successful enrollment');failSave=false;
 id.enabled=true;box.S.cameraFacing='back';
+for(const text of ["I don't know who you are.","I don’t recognize you.","I don't think we’ve met. What should I call you?","I recognize you, Aaron.","Your identity is unknown.","Face recognition is paused."]){
+ assert.equal(box.quietFaceStatusSpeech(text,'What is this box?'),'',text);
+ assert.equal(box.quietFaceStatusSpeech(text,'Do you recognize me?'),text,'Requested identity answer remains allowed');
+ assert.equal(box.quietFaceStatusSpeech(text,'',true),text,'Explicit enrollment/UI flow remains audible');
+}
+assert.equal(box.quietFaceStatusSpeech("I don't recognize you. That's a blue box.",'What is that?'),"That's a blue box.");
+assert.equal(box.quietFaceStatusSpeech('Your face is covered in chocolate.','What is on my face?'),'Your face is covered in chocolate.');
+assert.equal(box.quietFaceStatusSpeech("I don't know why that box is blue.",'Why is it blue?'),"I don't know why that box is blue.");
 (async()=>{await box.detectFaceNative();assert.match(id.quality,/looking behind/);assert.equal(id.lastDescriptor,null);
  console.log('PASS: explicit consent, no-overwrite, canceled/changed/multiple faces, eight-sample enrollment, independent recognition, unknown/ambiguous rejection, local deletion, storage failure, front-only identity.');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -16,7 +16,7 @@ async function check({active=true,limited=false,headChanged=false,headFailure=fa
   box.HEAD={generation:0};
   box.headMove=async(values,owner,alignment)=>{
     assert.equal(vm.runInContext('NW.checkingPath',box),true);
-    assert.equal(alignment,true);assert.equal(values.pan,0);assert.equal(values.tilt,-0.6);
+    assert.equal(alignment,true);assert.equal(values.pan,0);assert.equal(values.tilt,0);
     alignments++;box.HEAD.generation++;
     return headFailure?'Head movement failed: disconnected':'Pico completed the head target within its saved limits';
   };

@@ -59,7 +59,7 @@ class SharedBodyTests(unittest.TestCase):
     def test_head_uses_saved_direction_and_slow_executor(self):
         ack = self.request('head', axis='tilt', position=1)
         self.assertTrue(ack['ok']); self.assertEqual(ack['state']['targets']['tilt'], 650)
-        self.assertEqual(ack['state']['speed_us_s'], 150)
+        self.assertEqual(ack['state']['speed_us_s'], 400)
         self.assertTrue(self.request('head', axis='pan', position=-1)['ok'])
         self.assertEqual(self.head.targets['pan'], 500)
         self.request('stop'); self.assertFalse(self.head.targets)

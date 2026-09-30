@@ -89,4 +89,9 @@ vm.runInContext(part('function recordCuriosityMove(','function isVisibleCuriosit
 box.recordCuriosityMove('experiment','look_at','Head movement failed: ack timeout');assert.equal(box.CURIOSITY.experiments,0);
 box.recordCuriosityMove('experiment','new observation',quote);box.recordCuriosityMove('experiment','new observation',quote);assert.equal(box.CURIOSITY.experiments,1);
 const appetite=box.CURIOSITY.appetite;box.recordCuriosityMove('question','What is that box?');assert.equal(box.CURIOSITY.appetite,appetite,'asking alone cannot satisfy curiosity');
+box.activeOwnerTask=()=>null;
+box.activeSelfTask=()=>({id:'self-box',title:'Inspect the box label',requiresMotion:true});
+const selfWonder={};box.inquiryBindWonder(selfWonder,{target:'box'});
+assert.equal(selfWonder.taskId,'self-box');assert.equal(selfWonder.destination,'Inspect the box label');
+assert.equal(box.inquirySnapshot().destination,'Inspect the box label','Self-chosen investigations also retain their destination');
 console.log('PASS: persistent investigation, fresh evidence references, no ACK rewards, repeated-view critique, exact evidence excerpts, guarded reconnection and explicit step completion.');

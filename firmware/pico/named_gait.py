@@ -29,6 +29,7 @@ class NamedGait:
         self.cycle_offset = 0
         self.step_offset = 0
         self.phase_size = 1
+        self.walk_support_start = False
         self.preview_cycle = -1
         self.preview_deadline = 0
         try:
@@ -137,6 +138,9 @@ class NamedGait:
         preparation = sorted(final.values(), key=lambda s: s["position"].lower() != "down")
         if diagonal_walk:
             preparation = [s for s in preparation if s['channel'] != steps[2]['channel']]
+        # Only the recognized walking topology may directly re-engage unknown
+        # feet at Down. NamedTurn and manual/calibration moves keep their ramps.
+        self.walk_support_start = diagonal_walk
         # A walk omits the independent turn output. Re-engage Closed before
         # stepping so a previous release cannot leave it floating while walking.
         # NamedTurn already includes this output in its own final pose.
@@ -212,8 +216,11 @@ class NamedGait:
                 phase.append(self.pending[self.index+1])
                 self.phase_size=2
         targets=[self._target(s) for s in phase]
+        support = (self.walk_support_start and self.index < self.preparation_steps
+                   and len(phase) == 1 and phase[0]['position'].lower() == 'down')
+        options = {'walk_support':True} if support else {}
         self.channels.move(targets, calibration=False,
-                           speed=self.run_speed, parallel=len(targets)==2)
+                           speed=self.run_speed, parallel=len(targets)==2, **options)
 
     def _target(self, s):
         target = dict(channel=s["channel"], position=s["position"])
@@ -320,6 +327,7 @@ class NamedGait:
         steps_per_cycle = max(1, len(steps)) if isinstance(steps, list) else 1
         completed_cycles = self.cycle_offset + min(cycles, max(0, self.index - getattr(self, "preparation_steps", 0)) // steps_per_cycle)
         return dict(available=bool(self.plan), error=self.error, running=self.running,
+                    startup_implementation='walk-down-engagement-v1',
                     run_id=self.run_id, completed_steps=self.step_offset+self.index,
                     cycles=cycles, completed_cycles=completed_cycles,
                     protocol=2, waiting_for_vision=self.waiting_for_vision,

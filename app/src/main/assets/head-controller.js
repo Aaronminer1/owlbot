@@ -3,7 +3,9 @@
  * changes invalidate old requests after Stop or reconnect. Semantic direction
  * inversion belongs here, not in the owner's saved electrical pulse limits.
  * Head movement stays slow even when the body's gait pace is fast. */
-const HEAD={ws:null,ready:false,lastSeen:0,lastSent:0,rid:0,pending:new Map(),state:null,generation:0,manual:false,retryAt:0,disconnects:0,lastDisconnectReason:'',events:[],heartbeatPending:false};
+const HEAD={ws:null,ready:false,lastSeen:0,lastSent:0,rid:0,pending:new Map(),state:null,generation:0,manual:false,retryAt:0,disconnects:0,lastDisconnectReason:'',events:[],heartbeatPending:false,
+  faceBusy:false,faceLastSeenAt:0,faceSuppressedUntil:0,faceLastError:'',explicitMoves:0,faceCommands:0,
+  faceCanvas:null,faceSampleAt:0,faceSampleMs:0,faceSamples:0,attentionMode:'face'};
 function headEvent(reason){
   HEAD.lastDisconnectReason=reason;HEAD.events.push({time:Date.now(),reason});
   if(HEAD.events.length>20)HEAD.events.shift();
@@ -12,6 +14,50 @@ function headHeartbeatNeeded(){return headReady()&&!HEAD.heartbeatPending&&HEAD.
   (separateHead()||Boolean(HEAD.state?.holding&&(APP.settings||!APP.resting)));}
 function separateHead(){return $('#headRoute').value==='esp32';}
 function headReady(){return separateHead()?(HEAD.ready&&HEAD.ws?.readyState===1&&Date.now()-HEAD.lastSeen<3000):bodyControllerReady();}
+function headCapabilitySnapshot(){
+  const responding=headReady(),age=HEAD.stateAt?Date.now()-HEAD.stateAt:null;
+  const fresh=responding&&age!==null&&age>=0&&age<3000;
+  const paused=APP.resting?'sleeping':APP.settings?'settings open':!MIND.gazeArmed?'Gaze disabled in Controls':null;
+  return {tool:'look_at',availableInSoftware:true,state:paused?'paused':responding?'ready':'disconnected',reason:paused,
+    controllerResponding:responding,route:separateHead()?'esp32':'pico',stateAgeMs:age,
+    commandedPose:fresh?{pan:headSemanticPosition('pan',HEAD.state),tilt:headSemanticPosition('tilt',HEAD.state)}:null,
+    holding:fresh?Boolean(HEAD.state?.holding):null,moving:fresh?Boolean(HEAD.state?.moving):null,
+    physicalPositionMeasured:false,servoPowerMeasured:false,
+    usage:'look_at with pan:-1 left/0 center/+1 right; tilt:-1 down/0 center/+1 up. Uses saved mechanical centers and limits. Command completion is not observed physical movement.'};
+}
+function headViewChanged(){
+  HEAD.viewGeneration=(HEAD.viewGeneration||0)+1;
+  if(typeof MIND!=='undefined'){MIND.visionReport='';MIND.visionReportAt=0;MIND.lastVisionEvidence=null;}
+}
+function headCameraView(facing=S.cameraFacing){
+  const age=HEAD.stateAt?Date.now()-HEAD.stateAt:null;
+  const pan=headSemanticPosition('pan',HEAD.state),tilt=headSemanticPosition('tilt',HEAD.state);
+  const known=headReady()&&age!==null&&age>=0&&age<3000&&HEAD.state?.holding===true&&!HEAD.state.moving&&
+    !HEAD.explicitMoves&&Number.isFinite(pan)&&Number.isFinite(tilt);
+  const forward=$('#walkForwardCamera')?.value,front=!!forward&&facing===forward;
+  const mapped=known&&['front','back'].includes(forward)&&['front','back'].includes(facing);
+  // Semantic pan is relative to the body, not to mirrored selfie pixels.
+  // Rear-camera azimuth is on the opposite side of that same mounted head.
+  const sector=!mapped?'unknown':front?(pan<-.2?'left':pan>.2?'right':'forward'):
+    (pan<-.2?'behind-right':pan>.2?'behind-left':'behind');
+  return {cameraFacing:facing,forwardCamera:forward||null,bodySector:sector,
+    pan:known?pan:null,tilt:known?tilt:null,stateAgeMs:age,viewGeneration:HEAD.viewGeneration||0,
+    headGeneration:HEAD.generation,poseKnown:!!mapped,physicalPositionMeasured:false,
+    reference:'camera view relative to body; normalized servo position is not degrees',
+    bodyHeadingChangedByLook:false};
+}
+function headCameraViewMatches(before,after){
+  if(!before||!after||before.cameraFacing!==after.cameraFacing||before.forwardCamera!==after.forwardCamera||
+     before.viewGeneration!==after.viewGeneration||before.headGeneration!==after.headGeneration)return false;
+  if(before.poseKnown!==after.poseKnown)return false;
+  return !before.poseKnown||(Math.abs(before.pan-after.pan)<=.06&&Math.abs(before.tilt-after.tilt)<=.06&&before.bodySector===after.bodySector);
+}
+function headObserveBodyCommand(obj){
+  // Manual channel controls bypass headRequest, but still change the view.
+  if(obj?.t!=='dog_cal'||obj.channel_action!=='move'||!Array.isArray(obj.targets))return;
+  const channels=['pan','tilt'].map(axis=>HEAD.state?.config?.[axis]?.channel).filter(Number.isInteger);
+  if(obj.targets.some(t=>channels.includes(t.channel)))headViewChanged();
+}
 function headMessage(text){$('#headMessage').textContent=text;}
 function headNamedTarget(subject,position){
   const name=String(subject||'').toLowerCase().replace(/[_-]/g,' ').trim();
@@ -31,11 +77,17 @@ function disconnectHead(manual=true,reason=''){
   try{ws?.close();}catch(e){}
   headFailPending();HEAD.retryAt=Date.now()+5000;renderHead();
 }
-function headRequest(t,args={},walkAlignment=false){
+function headRequest(t,args={},walkAlignment=false,faceAttention=false){
   // Phone holder: head speed never follows the body's walking pace.
   if(t==='move')args={...args,slow:true};
+  // A deliberate look, manual adjustment, or walking alignment owns the head.
+  // Face attention must not immediately overwrite that target.
+  if(t==='move'&&!faceAttention)HEAD.faceSuppressedUntil=Date.now()+7000;
   if(t==='move'&&typeof NW!=='undefined'&&NW.checkingPath&&!walkAlignment)
     return Promise.reject(Error('Head look deferred while the walking camera checks straight ahead'));
+  // An intentional new view invalidates old scene claims. Tiny background
+  // face-following updates are excluded to avoid starving ordinary perception.
+  if(t==='move'&&!faceAttention)headViewChanged();
   if(!separateHead()){
     if(!bodyControllerReady())return Promise.reject(Error('Pico head is disconnected'));
     if(!['move','info','stop','release','ping'].includes(t))return Promise.reject(Error('Set Pico head limits in Servo setup'));
@@ -51,7 +103,7 @@ function headRequest(t,args={},walkAlignment=false){
     return channelCommand('head_'+(['release'].includes(t)?'stop':t==='ping'?'info':t),args).then(ack=>{
       if(ack.state){
         ack={...ack,state:{...ack.state,config:Object.fromEntries(Object.entries(ack.state.config||{}).map(([axis,c])=>[axis,{...c,invert:Boolean(inverted[axis])}]))}};
-        HEAD.state=ack.state;
+        HEAD.state=ack.state;HEAD.stateAt=Date.now();
       }
       return ack;
     });
@@ -84,7 +136,7 @@ function connectHead(){
       if(!m.ok||m.kind!=='owlbot-head'){HEAD.manual=true;headMessage('Head pairing failed or another phone is connected');disconnectHead(true);return;}
       HEAD.ready=true;clearTimeout(timeout);headMessage('ESP32 head connected. Body connection is unchanged.');
     }
-    HEAD.lastSeen=Date.now();if(m.state)HEAD.state=m.state;
+    HEAD.lastSeen=Date.now();if(m.state){HEAD.state=m.state;HEAD.stateAt=Date.now();}
     if(first)loadHeadSettings();
     const p=HEAD.pending.get(m.rid);
     if(p){clearTimeout(p.timer);HEAD.pending.delete(m.rid);m.ok?p.resolve(m):p.reject(Error(m.error||'Head command rejected'));}
@@ -95,15 +147,23 @@ function connectHead(){
 }
 function headStop(){
   HEAD.generation++;
+  $('#headAutoFace').checked=false;
+  HEAD.faceSuppressedUntil=Date.now()+7000;
   $('#headLiveEnabled').checked=false;
   if(!headReady())return Promise.resolve(false);
   return headRequest('stop').then(()=>true).catch(()=>false);
 }
 async function headMove(values,owner=false,walkAlignment=false){
-  if(!owner&&(APP.resting||APP.settings||!MIND.gazeArmed))return 'Head gaze is paused while asleep or in Settings';
+  if(!owner&&(APP.resting||APP.settings))return 'Head gaze is paused while asleep or in Settings';
+  if(!owner&&!MIND.gazeArmed)return 'Head gaze is paused: Gaze is disabled in Controls';
+  if(typeof BODY_BOW!=='undefined'&&BODY_BOW.active)return 'Head look deferred while the bow owns the head';
   if(typeof NW!=='undefined'&&NW.checkingPath&&!walkAlignment)return 'Head look deferred while the walking camera checks straight ahead';
+  // An intentional look owns attention until Andrew (or the user) chooses
+  // faces again. A timer cannot tell whether he has finished inspecting.
+  if(!walkAlignment)HEAD.attentionMode='hold';
   const generation=++HEAD.generation;
   $('#headLiveEnabled').checked=false;
+  HEAD.explicitMoves++;
   try{
     const accepted=await headRequest('move',values,walkAlignment);
     const targets={...accepted.state?.targets};
@@ -134,6 +194,113 @@ async function headMove(values,owner=false,walkAlignment=false){
     }
     await headStop();throw Error('Head movement timed out');
   }catch(e){if(generation===HEAD.generation&&headReady())await headStop();return 'Head movement failed: '+e.message;}
+  finally{HEAD.explicitMoves--;HEAD.faceSuppressedUntil=Date.now()+7000;}
+}
+function headFaceTrackingRequested(){return $('#headAutoFace')?.checked===true;}
+function headSetAttention(mode){
+  if(!['face','hold'].includes(mode))return {ok:false,error:'Choose face or hold'};
+  if(mode==='face'&&(APP.resting||APP.settings||!MIND.gazeArmed))
+    return {ok:false,error:'Head gaze is paused while asleep, in Settings, or gaze is disabled'};
+  if(mode==='face'&&separateHead())return {ok:false,error:'Face attention is currently available on the calibrated Pico head only'};
+  HEAD.attentionMode=mode;HEAD.generation++;HEAD.faceLastSeenAt=SEEN.lastSeen;
+  if(mode==='face'){$('#headAutoFace').checked=true;HEAD.faceSuppressedUntil=0;}
+  // Neither mode sends a release or a leg command. Hold preserves the current
+  // intentional target and supporting PWM; face waits for a fresh detection.
+  return {ok:true,mode,trackingReady:headFaceTrackingReady(),physicalFeedback:false,
+    message:mode==='face'?'Silent face attention selected; intentional looks and walking take priority.':'Face following paused; the head stays supported and intentional looks remain available.'};
+}
+function headAttentionContext(){
+  return {mode:HEAD.attentionMode||'face',faceFollowingEnabled:headFaceTrackingRequested(),
+    trackingReady:headFaceTrackingReady(),commandedPose:{pan:headSemanticPosition('pan',HEAD.state),tilt:headSemanticPosition('tilt',HEAD.state)},
+    physicalFeedback:false};
+}
+function headFaceTrackingReady(){
+  return headFaceTrackingRequested()&&HEAD.attentionMode!=='hold'&&!APP.resting&&!APP.settings&&!document.hidden&&
+    !separateHead()&&!thermalModerate()&&MIND.gazeArmed&&S.cameraFacing==='front'&&S.camOK&&
+    !S.sim&&headReady()&&!NW.running&&!NW.checkingPath&&
+    !(typeof walkingStreamStatus==='function'&&walkingStreamStatus().active)&&
+    !S.running&&!HEAD.explicitMoves&&Date.now()>=HEAD.faceSuppressedUntil;
+}
+function headFaceSamplingActive(){
+  return headFaceTrackingReady()&&typeof NATIVE!=='undefined'&&typeof NATIVE?.detectFace==='function';
+}
+function headSampleFace(){
+  if(!headFaceSamplingActive())return true; // Existing native detections remain usable without this sampler.
+  if(now()-(HEAD.faceSampleAt||0)<220)return false;
+  const video=$('#vid');if(!video||video.readyState<2||!video.videoWidth)return false;
+  const canvas=HEAD.faceCanvas||(HEAD.faceCanvas=document.createElement('canvas'));
+  const width=320,height=Math.round(video.videoHeight/video.videoWidth*width);
+  if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}
+  canvas.getContext('2d').drawImage(video,0,0,width,height);
+  const started=now(),result=JSON.parse(NATIVE.detectFace(canvas.toDataURL('image/jpeg',.55)));
+  HEAD.faceSampleAt=now();HEAD.faceSampleMs=now()-started;HEAD.faceSamples=(HEAD.faceSamples||0)+1;
+  // A missed frame is not permission to integrate the last face error again.
+  // This detector locates faces only; it never updates recognition or memory.
+  if(!result.found)return false;
+  markSeen(result.x+result.width/2,result.y+result.height/2,result.width,result.confidence,'native-face');
+  return true;
+}
+function headSemanticPosition(axis,state){
+  const c=state?.config?.[axis],pulse=state?.commanded?.[axis]??state?.last_commanded?.[axis];
+  if(!c||!Number.isFinite(pulse)||!Number.isFinite(c.center))return null;
+  const span=pulse>=c.center?c.maximum-c.center:c.center-c.minimum;
+  if(!(span>0))return null;
+  const electrical=(pulse-c.center)/span;
+  return Math.max(-1,Math.min(1,c.invert?-electrical:electrical));
+}
+function headFaceTarget(state,seen){
+  const pan=headSemanticPosition('pan',state),tilt=headSemanticPosition('tilt',state);
+  if(pan===null||tilt===null)return null;
+  // SEEN has already mirrored selfie coordinates. Its positive x means the
+  // face is to Andrew's left, while semantic positive pan turns right.
+  // Equal PWM lead on both axes accounts for tilt's narrower calibrated range.
+  // Taper the lead toward image center: a full-sized target at the deadband
+  // edge can carry the head past the face before the next camera/relay update.
+  // This changes target distance, not the Pico's physical speed cap.
+  const lead=(axis,error)=>{
+    if(Math.abs(error)<=0.13)return 0;
+    const c=state.config[axis],positive=-error>0;
+    const electricalPositive=c.invert?!positive:positive;
+    const span=electricalPositive?c.maximum-c.center:c.center-c.minimum;
+    const pulseLead=Math.min(60,(Math.abs(error)-0.10)*180);
+    return -Math.sign(error)*pulseLead/span;
+  };
+  const dx=lead('pan',seen.x),dy=lead('tilt',seen.y);
+  // No new error does not mean the previous target has finished. Cancel any
+  // remaining lead at the reported commanded position when the face centers.
+  // Do not release PWM: the mounted phone still needs head support.
+  const outstanding=Object.keys(state.targets||{}).some(axis=>
+    ['pan','tilt'].includes(axis)&&Number.isFinite(state.commanded?.[axis])&&
+    Math.abs(state.targets[axis]-state.commanded[axis])>2);
+  if(dx===0&&dy===0&&!outstanding)return null;
+  // A deliberate look may start outside the attention envelope. Approach it
+  // incrementally; clamping the old pose would cause an unrelated recenter.
+  const step=(current,delta,limit)=>Math.max(Math.min(-limit,current),
+    Math.min(Math.max(limit,current),current+delta));
+  return {pan:step(pan,dx,0.55),tilt:step(tilt,dy,0.48)};
+}
+async function headFaceAttentionTick(){
+  if(HEAD.faceBusy||!headFaceTrackingReady())return;
+  HEAD.faceBusy=true;
+  try{
+    if(!headSampleFace()||SEEN.method!=='native-face'||!SEEN.found||SEEN.conf<0.5||
+       now()-SEEN.lastSeen>2000||SEEN.lastSeen===HEAD.faceLastSeenAt)return;
+    const seenAt=SEEN.lastSeen,seen={x:SEEN.x,y:SEEN.y},generation=HEAD.generation;
+    // Use the Pico's actual commanded PWM, not the previous target. That
+    // avoids building a backlog when detection outruns the servo ramp.
+    const state=(await headRequest('info')).state;
+    const target=headFaceTarget(state,seen);
+    if(!target){HEAD.faceLastSeenAt=seenAt;return;}
+    if(!headFaceTrackingReady()||generation!==HEAD.generation||now()-seenAt>2000)return;
+    const ack=await headRequest('move',target,false,true);
+    if(ack.state){HEAD.state=ack.state;HEAD.stateAt=Date.now();}
+    HEAD.faceLastSeenAt=seenAt;
+    HEAD.faceCommands++;
+    HEAD.faceLastError='';
+  }catch(e){
+    HEAD.faceLastError=String(e.message||e);
+    HEAD.faceSuppressedUntil=Date.now()+3000;
+  }finally{HEAD.faceBusy=false;}
 }
 async function headAcknowledgedCommand(message){
   const type=message.t;
@@ -187,10 +354,17 @@ function updateHeadSlider(){
   slider.value=HEAD.state.commanded[axis]??Math.round((c.minimum+c.maximum)/2);
   $('#headLiveValue').textContent=slider.value+' µs';
 }
-$('#headRoute').onchange=()=>{disconnectHead(true);renderHead();prefsSave();if(separateHead())connectHead();};
+$('#headRoute').onchange=()=>{$('#headAutoFace').checked=false;disconnectHead(true);renderHead();prefsSave();if(separateHead())connectHead();};
 $('#btnHeadConnect').onclick=()=>{connectHead();};
 $('#btnHeadDisconnect').onclick=()=>disconnectHead(true);
 $('#btnHeadStop').onclick=async()=>{await headStop();headMessage('Head stop requested.');renderHead();};
+$('#headAutoFace').checked=false;
+$('#headAutoFace').onchange=()=>{
+  HEAD.attentionMode=$('#headAutoFace').checked?'face':'hold';HEAD.generation++;
+  HEAD.faceLastSeenAt=SEEN.lastSeen;
+  HEAD.faceSuppressedUntil=Date.now()+($('#headAutoFace').checked?1500:0);
+  headMessage($('#headAutoFace').checked?'Silent face attention armed; explicit looks and walking take priority.':'Silent face attention off; current head support is unchanged.');
+};
 $('#btnHeadLoad').onclick=async()=>{try{await headRequest('info');loadHeadSettings();headMessage('Loaded ESP32 head limits.');}catch(e){headMessage(e.message);}};
 $('#headSettingsLock').checked=true;
 $('#headSettingsLock').onchange=renderHead;
@@ -236,6 +410,7 @@ setInterval(()=>{
   else if(HEAD.ready)disconnectHead(false,'No fresh ESP32 replies for three seconds');
   else if(separateHead()&&!HEAD.ws&&!HEAD.manual&&Date.now()>HEAD.retryAt&&!document.hidden&&(APP.settings||!APP.resting))connectHead();
 },750);
+setInterval(headFaceAttentionTick,250);
 window.addEventListener('pagehide',()=>disconnectHead(true));
 document.addEventListener('visibilitychange',()=>{if(document.hidden)disconnectHead(false);});
 renderHead();

@@ -16,7 +16,7 @@ const box={console,OwlMusic,Uint8Array,Float32Array,Date:{now:()=>clock},Math,JS
  setTimeout(fn,ms){timers.set(++id,{fn,at:clock+ms});return id;},clearTimeout(id){timers.delete(id);},
  fetch:async()=>({ok:true,arrayBuffer:async()=>bytes}),
  APP:{resting:false,settings:false},THERMAL:{paused:false},VOICE:{busy:false,holdMic:false,queue:[]},
- EARS:{handsFree:true,paused:false,on:false,handsFreeState:'listening'},NATIVE:{setMicPaused:v=>pause.push(v),setMelodyListening(){}},
+ EARS:{handsFree:true,handsFreeWanted:true,paused:false,on:false,handsFreeState:'listening'},NATIVE:{setMicPaused:v=>pause.push(v),setMelodyListening(){}},
  MIND:{on:true,voice:true,busy:false,lastHumanInputAt:0,userQueue:[]},S:{running:false},NW:{running:false},
  walkingStreamStatus:()=>({active:false}),socialInitiativeEnabled:()=>true,FACE:{set(){}},hush(){},caption(){},log(){}};
 vm.createContext(box);vm.runInContext(fs.readFileSync(__dirname+'/../app/src/main/assets/music-player.js','utf8'),box);
@@ -32,12 +32,19 @@ async function advance(seconds){
 (async()=>{
  const response=await run(`musicPlay({song:'fur_elise',instrument:'piano'})`);assert.match(response,/1041 notes/);
  assert.equal(run('MIDI_PLAYER.playing'),true);assert.equal(pause.at(-1),true);
+ assert.equal(box.musicFaceState(),null,'No animation before scheduled audio onset');
+ await advance(.2);let face=box.musicFaceState();assert.equal(face.emotion,'serene');assert(face.energy>0);
+ assert(Number.isFinite(face.sway)&&Number.isFinite(face.nod));
+ run('MUSIC.prefs.volume=0');assert.equal(box.musicFaceState(),null,'Muted output has no performance face');run('MUSIC.prefs.volume=.55');
+ run("MIDI_PLAYER.ctx.state='suspended'");assert.equal(box.musicFaceState(),null,'Suspended audio has no dancing face');run("MIDI_PLAYER.ctx.state='running'");
+ box.EARS.handsFree=false; // Native pause clears capture state, not owner intent.
  assert(nodes.length<25,'Rolling scheduler must not allocate the entire piece');
  await advance(91);assert(run('MIDI_PLAYER.playing'),'Must continue past old 90-second ceiling');
  await advance(66);assert.equal(run('MIDI_PLAYER.playing'),false);assert.equal(run('MIDI_PLAYER.scheduled'),1041);
  assert.equal(run('MIDI_PLAYER.lastResult.state'),'completed');
  assert.equal(pause.at(-1),false);assert.match(run('MUSIC.notice'),/Finished/);
- await run(`musicPlay({song:'fur_elise',instrument:'hum'})`);await advance(157);
+ assert.equal(run('MIDI_PLAYER.face'),null);assert.equal(box.musicFaceState(),null);box.EARS.handsFree=true;
+ await run(`musicPlay({song:'fur_elise',instrument:'hum'})`);await advance(.2);assert.equal(box.musicFaceState().emotion,'humming');await advance(157);
  assert.equal(run('MIDI_PLAYER.scheduled'),541);assert.match(run('MUSIC.notice'),/Finished/);
  // A Stop during the fetch must cancel the pending start.
  run('MUSIC.cache=null');box.fetch=()=>new Promise(r=>fetchResolve=r);
