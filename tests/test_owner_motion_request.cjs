@@ -24,7 +24,12 @@ for(const name of ['look_at','stop','stop_walking','read_distance','use_camera',
 assert.equal(box.ownerMotionToolProblem('move_named_servos',{subject:'head'}),'');
 box.acceptOwnerMotionRequest('How far is the doorway?');assert.equal(box.ownerMotionSnapshot().feetStill,true);
 const reload={...box};vm.createContext(reload);vm.runInContext(code,reload);assert.equal(reload.ownerMotionSnapshot().feetStill,true,'hold survives app restart');
-box.acceptOwnerMotionRequest('Walk forward eight cycles');assert.equal(box.ownerMotionSnapshot().feetStill,false);assert.equal(box.ownerMotionToolProblem('move',{}),'');
+for(const text of ['Walk forward only after I tell you it is safe.', 'When I say go, then walk forward.', 'Walk forward tomorrow.', 'Walk forward. Wait for my signal.']){
+  box.acceptOwnerMotionRequest(text);
+  assert.equal(box.ownerMotionSnapshot().feetStill,true,text);
+  assert.match(box.ownerMotionToolProblem('move',{}),/Not executed/);
+}
+box.acceptOwnerMotionRequest('Walk forward now');assert.equal(box.ownerMotionSnapshot().feetStill,false);assert.equal(box.ownerMotionToolProblem('move',{}),'');
 // Exercise the production dispatch gate, not merely the parser.
 const start=html.indexOf('async function runTool(name, args, context={}){');
 const gate=html.slice(start,html.indexOf("  if(name==='list_stories')",start))+"return 'allowed';}";

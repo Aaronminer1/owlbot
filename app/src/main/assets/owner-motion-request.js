@@ -13,8 +13,8 @@ function ownerMotionDirective(text){
   const noBody=/^(?:don't|do not)\s+(?:walk|move\s+(?:your\s+|the\s+)?(?:feet|legs|body)|turn\s+(?:your\s+|the\s+)?body)(?:\s+(?:now|yet|for now|at all))?(?:$|\s*,|\s+(?:until|unless)\b)/i;
   // "Don't walk into the wall" constrains a route; it is NOT a feet hold.
   if(clauses.some(c=>hold.test(c)||noBody.test(c)))return 'hold';
-  const resume=/^(?:(?:okay|ok|now)[, ]+)?(?:(?:please|can you|could you|you can|you may|I want you to|I'd like you to|go ahead and)\s+)?(?:(?:walk|drive|move)\s+(?:forward|backward|backwards|ahead)|(?:turn|rotate)\s+(?:your body\s+)?(?:left|right)|(?:go|continue|resume|keep)\s+explor(?:e|ing|ation)|(?:resume|continue|start|keep)\s+walking|(?:back up|bow|take a bow|wiggle)(?:\s|$)|(?:move|turn)\s+your\s+body\b)/i;
-  if(clauses.some(c=>resume.test(c)))return 'resume';
+  const resume=/^(?:(?:okay|ok|now)[, ]+)?(?:(?:please|can you|could you|you can|you may|I want you to|I'd like you to|go ahead and)\s+)?(?:(?:walk|drive|move)\s+(?:forward|backward|backwards|ahead)|(?:turn|rotate)\s+(?:your body\s+)?(?:left|right)|(?:go|continue|resume|keep)\s+explor(?:e|ing|ation)|(?:resume|continue|start|keep)\s+walking|(?:back up|bow|take a bow|wiggle)|(?:move|turn)\s+your\s+body)(?:\s+(?:for\s+)?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+cycles?)?(?:\s+(?:now|once|please))?$/i;
+  if(clauses.filter(Boolean).length===1&&clauses.some(c=>resume.test(c))&&!/\bthen\b/i.test(plain))return 'resume';
   return null;
 }
 function ownerMotionSnapshot(){return {feetStill:OWNER_MOTION.feetStill,changedAt:OWNER_MOTION.changedAt,

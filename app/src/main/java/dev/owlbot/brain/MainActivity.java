@@ -1957,6 +1957,11 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         if (!activityResumed) return;
         if (pushToTalkHeld || listening) return;
         if ((!melodyListenOnly && (!handsFreeEnabled || micPaused)) || handsFreeRunning) return;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            if (melodyListenOnly) toJs("onNativeMusicCaptureError", "Microphone permission is required.");
+            toJs("onNativeHandsFreeState", "unavailable");
+            return;
+        }
         final String key = loadSecretValue("voice_api");
         if(!melodyListenOnly && Build.VERSION.SDK_INT < 33 && (key==null || key.trim().isEmpty())) {
             toJs("onNativeHandsFreeState","legacy-needs-key");

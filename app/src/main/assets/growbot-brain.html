@@ -1129,10 +1129,11 @@
       <option value="push" selected>Push-to-talk</option>
       <option value="handsfree">Hands-free</option>
     </select>
-    <p class="note">On Android 13+, ears-open mode keeps a local microphone stream
-      and sends completed utterances to the system recognizer. Without a configured
-      transcription key, older Android uses the bundled offline English model:
-      no listening tones, no extra API key, and no audio upload. Recognized text
+    <p class="note"><span id="handsFreeRoute"></span> On Android 13+, ears-open mode keeps a local microphone stream
+      and sends completed utterances to the Android speech service, which may use the internet.
+      If cloud transcription is configured, it can also handle fallback requests.
+      On Android 12 and earlier, hands-free mode requires a configured transcription provider
+      and sends completed utterances there. Push-to-talk uses the Android speech service. Recognized text
       still goes to the selected brain model for conversation.
       Use Copy my humming to echo a melody with its rhythm, without sending humming to speech recognition.</p>
     <div id="sttBox" class="hide">
@@ -1140,7 +1141,7 @@
         <button id="btnHandsFree">Continuous conversation: off</button>
       </div>
       <p class="note" id="handsFreeOut">Listening pauses while OwlBot speaks.
-        Android speech recognition works without another API key.</p>
+        Hands-free transcription depends on the Android version and provider settings above.</p>
       <label>Transcription URL</label>
       <input id="vSttUrl" value="https://api.groq.com/openai/v1/audio/transcriptions"
              autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -6501,6 +6502,11 @@ function handsFreeActive(){
 function refreshHandsFreeUI(){
   const button=$("#btnHandsFree"),out=$("#handsFreeOut");
   if(!button||!out)return;
+  const route=$("#handsFreeRoute");
+  if(route && !route.textContent && NATIVE?.platform){
+    const sdk=Number(/^android-(\d+)/.exec(NATIVE.platform())?.[1]);
+    if(sdk)route.textContent=sdk>=33?"This phone uses Android speech recognition for hands-free input.":"This phone uses the configured transcription provider for hands-free input.";
+  }
   const active=handsFreeActive();
   const wanted=EARS.handsFreeWanted;
   button.textContent=wanted?"Turn hands-free off":"Enable hands-free";
@@ -6514,12 +6520,12 @@ function refreshHandsFreeUI(){
     : EARS.paused||VOICE.holdMic?"Microphone paused while OwlBot speaks. Wait for ears: ready before replying."
     : active
     ? (EARS.handsFreeState==="hearing"?"I hear speech now. Audio is captured locally until this utterance ends.":
-       EARS.handsFreeState==="transcribing"?(EARS.backend==="vosk-offline-en"?"Recognizing this English phrase on the phone; no audio upload.":"Transcribing the completed utterance; the ear will resume after the response."):
+       EARS.handsFreeState==="transcribing"?"Transcribing the completed utterance; the ear will resume after the response.":
        EARS.handsFreeState==="starting"?"Opening the microphone — not ready yet.":
-       EARS.backend==="vosk-offline-en"?"Ready: quiet on-device English hearing. No API key or audio upload. Recognized text is sent to the selected brain.":
+       EARS.backend==="cloud-pcm"?"Ready. Completed utterances are sent to your configured transcription provider.":
        EARS.backend==="android-legacy"?"Ready using Android’s speech service, like Talk. No extra API key. The service may use the internet and play listening tones.":
        "Ready for speech. Audio stays local until speech is detected; only a completed utterance is sent for transcription.")
-    : "Android speech recognition works without another API key. The phone’s speech service may use the internet.";
+    : "Waiting for the speech service. Check the Android version and transcription settings above.";
   refreshHearingModeBadge();
 }
 
