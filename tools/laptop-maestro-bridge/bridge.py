@@ -24,6 +24,7 @@ from typing import Any
 
 import serial
 from websockets.asyncio.server import ServerConnection, serve
+from websockets.exceptions import ConnectionClosed
 
 
 LOG = logging.getLogger("owlbot.maestro")
@@ -239,17 +240,17 @@ class BodyServer:
         self.token = token
         self.dry_run = dry_run
         self.owner: ServerConnection | None = None
-        self.last_message_at = time.monotonic()
+        self.last_message_at: float | None = None
 
     async def watchdog(self, stop_event: asyncio.Event, timeout_s: float = 5.0) -> None:
         while not stop_event.is_set():
             await asyncio.sleep(0.25)
             owner = self.owner
-            if owner is None or time.monotonic() - self.last_message_at <= timeout_s:
+            if owner is None or self.last_message_at is None or time.monotonic() - self.last_message_at <= timeout_s:
                 continue
             LOG.error("application heartbeat expired; stopping motion and closing control lease")
+            self.last_message_at = None
             await self.engine.stop()
-            self.owner = None
             with contextlib.suppress(Exception):
                 await owner.close(code=1011, reason="body heartbeat expired")
 
@@ -281,7 +282,6 @@ class BodyServer:
         authenticated = False
         try:
             async for raw in ws:
-                self.last_message_at = time.monotonic()
                 try:
                     message = json.loads(raw)
                 except Exception:
@@ -300,10 +300,17 @@ class BodyServer:
                         await self.send(ws, {"t": "ack", "of": "auth", "ok": 0, "err": "controller busy"})
                         await ws.close(code=1013, reason="controller busy")
                         return
+                    self.last_message_at = time.monotonic()
                     self.owner = ws
                     authenticated = True
                     await self.send(ws, {"t": "ack", "of": "auth", "ok": 1})
                     continue
+                if self.owner is not ws or self.last_message_at is None:
+                    return
+                if msg_type in {"info", "quad8_info", "ping", "stop"} or (
+                    msg_type == "command" and str(message.get("name", "")).lower() in COMMANDS
+                ):
+                    self.last_message_at = time.monotonic()
                 if msg_type in {"info", "quad8_info"}:
                     await self.send(ws, {"t": "info", "id": "laptop-maestro", "fw": "owlbot-laptop-bridge-0.1",
                                          "board": "windows", "profile": "quad8", "transport": "usb-command-port",
@@ -322,10 +329,13 @@ class BodyServer:
                     continue
                 await self.send(ws, {"t": "ack", "of": msg_type or "unknown", "rid": message.get("rid"),
                                      "ok": 0, "err": "unsupported message"})
+        except ConnectionClosed:
+            pass  # Socket closure also ends the control lease.
         finally:
             if self.owner is ws:
-                self.owner = None
                 await self.engine.stop()
+                self.owner = None
+                self.last_message_at = None
                 LOG.warning("controller disconnected; outputs released")
 
 

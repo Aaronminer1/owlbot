@@ -71,7 +71,7 @@ Never paste a real credential into GitHub. If exposed:
 
 ## Permissions
 
-The manifest requests internet/network state, Wi-Fi state, location, activity recognition, camera, microphone, wake lock, vibration, and installed-package visibility. Some are optional at runtime; `QUERY_ALL_PACKAGES` is broad and exists for experimental app discovery. A production design should replace it with narrower package queries or user-selected intents where possible.
+The manifest requests internet/network state, Wi-Fi state, location, activity recognition, camera, microphone, wake lock, vibration, and visibility of launchable apps and declared integrations. Some permissions are optional at runtime.
 
 ## User responsibility
 

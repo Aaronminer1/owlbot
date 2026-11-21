@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const dir=path.join(__dirname,'../app/src/main/assets');
-const html=fs.readFileSync(path.join(dir,'growbot-brain.html'),'utf8'),head=fs.readFileSync(path.join(dir,'head-controller.js'),'utf8');
+const html=fs.readFileSync(path.join(dir,'growbot-brain.html'),'utf8').replace(/\r\n/g,'\n'),head=fs.readFileSync(path.join(dir,'head-controller.js'),'utf8');
 const cut=(text,start,end)=>text.slice(text.indexOf(start),text.indexOf(end,text.indexOf(start)));
 const names=['recall','remember','inspect_capabilities','look_at','stop','read_sensors','read_distance','use_camera','express'];
 const b={MIND:{socialTurn:false,perceptionTurn:false},AUTONOMY:{enabled:false},TOOLS:names.map(name=>({type:'function',function:{name}})),conversationReplyTool:()=>({function:{name:'reply_to_person'}}),phoneBrainSelected:()=>false};

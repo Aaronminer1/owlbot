@@ -250,7 +250,7 @@ This repository will never include a shared Ollama API key. Every user must prov
 - Run `pwsh scripts/check-secrets.ps1` before every push.
 - If a key is ever exposed, revoke it immediately; deleting it from the latest commit is not enough because Git history retains it.
 
-The optional proxy refuses non-loopback listening unless a separate client token is configured. It does not contain credentials and does not read an `.env` file automatically.
+The proxy requires a separate client token whenever an upstream key is loaded or the listener is exposed beyond loopback. Enter the client token in the phone’s provider API key field. The default browser origin is `null` for the bundled WebView and requires a token. For a hosted client, set `OWLBOT_PROXY_ORIGIN` to its exact origin. It does not contain credentials and does not read an `.env` file automatically.
 
 ## Privacy and network behavior
 

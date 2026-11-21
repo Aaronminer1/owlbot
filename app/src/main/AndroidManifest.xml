@@ -11,8 +11,6 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <!-- Owner-gated app launching needs local visibility of launchable apps. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <!-- The senses. -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -28,6 +26,10 @@
 
     <!-- Narrow package visibility for owner-approved app tools. -->
     <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <package android:name="com.google.android.googlequicksearchbox" />
         <package android:name="com.android.chrome" />
         <package android:name="com.pandora.android" />

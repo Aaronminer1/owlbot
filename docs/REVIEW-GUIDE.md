@@ -169,7 +169,7 @@ forgetting saved profiles remains possible. Do not “fix” that by copying pri
 assets or enabling a nonfunctional enrollment button.
 
 Optional tools: `tools/mind-proxy.mjs` reads runtime environment credentials and
-requires a client token for non-loopback listening. The laptop Maestro bridge
+requires a client token for non-loopback listening or when an upstream key is loaded. The laptop Maestro bridge
 defaults to dry-run and uses synthetic example calibration; neither is the
 newly published [named-gait Pico firmware](PICO-CONTROLLER.md).
 

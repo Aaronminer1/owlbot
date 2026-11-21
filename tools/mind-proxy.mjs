@@ -16,6 +16,7 @@
  * might get handed to someone else.
  *
  *   export OLLAMA_API_KEY=...        # from https://ollama.com/settings/keys
+ *   export OWLBOT_PROXY_TOKEN=...   # separate client secret for the phone
  *   node mind-proxy.mjs              # localhost only
  *
  *   # to let a phone on the LAN connect, require a separate client token:
@@ -39,8 +40,8 @@ const CLIENT_TOKEN = process.env.OWLBOT_PROXY_TOKEN || process.env.GROWBOT_PROXY
 const MAX_BODY = Number(process.env.MAX_BODY_BYTES || 2 * 1024 * 1024);
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
-if (!LOOPBACK.has(HOST) && !CLIENT_TOKEN) {
-  console.error("Refusing a non-loopback listener without OWLBOT_PROXY_TOKEN.");
+if ((KEY || !LOOPBACK.has(HOST)) && !CLIENT_TOKEN) {
+  console.error("Set OWLBOT_PROXY_TOKEN when using an upstream key or listening beyond loopback.");
   process.exit(1);
 }
 
@@ -52,14 +53,22 @@ function hasClientToken(header) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+// The Android file-based WebView can send an opaque ("null") origin.
+const allowedOrigin = process.env.OWLBOT_PROXY_ORIGIN || "null";
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": allowedOrigin,
+  "Vary": "Origin",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,Authorization",
   "Access-Control-Max-Age": "86400",
 };
 
 const server = http.createServer(async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin !== undefined && (origin !== allowedOrigin || (origin === "null" && !CLIENT_TOKEN))) {
+    res.writeHead(403, { "Vary": "Origin" });
+    return res.end("Browser origin not allowed");
+  }
   if (req.method === "OPTIONS") {
     res.writeHead(204, CORS);
     return res.end();
@@ -133,7 +142,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`owlbot mind-proxy  ${HOST}:${PORT}  ->  ${UPSTREAM}`);
+  console.log(`owlbot mind-proxy  ${HOST}:${server.address().port}  ->  ${UPSTREAM}`);
   console.log(KEY ? "api key loaded from environment" : "WARNING: no OLLAMA_API_KEY set");
   console.log(CLIENT_TOKEN ? "client token required" : "client token not required on loopback");
   console.log(`set the app's base url to  http://<this machine>:${PORT}/v1`);

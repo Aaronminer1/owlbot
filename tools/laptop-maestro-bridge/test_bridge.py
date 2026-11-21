@@ -37,6 +37,25 @@ async def main() -> None:
             await ws.send(json.dumps({"t": "stop", "rid": 8}))
             assert json.loads(await ws.recv())["ok"] == 1
 
+            lease_time = body.last_message_at
+            async with connect(f"ws://127.0.0.1:{port}/ws") as second:
+                await second.send(json.dumps({"t": "auth", "token": "temporary-test-token"}))
+                assert json.loads(await second.recv())["err"] == "controller busy"
+            assert body.last_message_at == lease_time
+            await ws.send(json.dumps({"t": "ping"}))
+            assert json.loads(await ws.recv())["t"] == "pong"
+            assert body.last_message_at > lease_time
+            await ws.send(json.dumps({"t": "command", "name": "rest"}))
+            assert json.loads(await ws.recv())["ok"] and output.last_targets
+            stop_event = asyncio.Event()
+            watchdog = asyncio.create_task(body.watchdog(stop_event, timeout_s=0.1))
+            try:
+                await asyncio.wait_for(ws.wait_closed(), 2)
+                assert not output.last_targets
+            finally:
+                stop_event.set()
+                await watchdog
+
     assert output.serial is None
     print("Laptop bridge smoke test passed without opening a serial port.")
 
